@@ -1,0 +1,2924 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>植物大戰殭屍 3D 冒險群島｜互動探索與創意工坊</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Sans TC & Fredoka -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Three.js (r128 UMD) with Multi-CDN Fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/build/three.min.js';"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/OrbitControls.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js';"></script>
+
+  <style>
+    :root {
+      --pvz-green: #4caf50;
+      --pvz-dark-green: #2e7d32;
+      --pvz-sun: #ffca28;
+      --pvz-terracotta: #d97742;
+      --pvz-sky: #7ec8e3;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Noto Sans TC', 'Fredoka', sans-serif;
+      background: linear-gradient(180deg, #64b5f6 0%, #b3e5fc 65%, #e1f5fe 100%);
+      user-select: none;
+    }
+
+    /* CRUCIAL FIX: Ensure canvas container receives pointer events directly */
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    /* Custom Scrollbar */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(76, 175, 80, 0.55);
+      border-radius: 999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(46, 125, 50, 0.8);
+    }
+
+    /* Glass & Claymorphic Cards */
+    .pvz-panel {
+      background: rgba(255, 253, 247, 0.94);
+      backdrop-filter: blur(12px);
+      border: 3px solid #8bc34a;
+      box-shadow: 0 10px 28px rgba(27, 94, 32, 0.22), inset 0 2px 0 rgba(255, 255, 255, 0.9);
+      pointer-events: auto;
+    }
+
+    .pvz-btn {
+      transition: all 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 4px 0 rgba(0, 0, 0, 0.18);
+      pointer-events: auto;
+    }
+    .pvz-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      filter: brightness(1.04);
+    }
+    .pvz-btn:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+    }
+    .pvz-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Sidebar Slide Transitions */
+    .left-drawer {
+      transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+      pointer-events: auto;
+    }
+    .left-drawer.collapsed {
+      transform: translateX(-115%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .right-drawer {
+      transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+      pointer-events: auto;
+    }
+    .right-drawer.collapsed {
+      transform: translateX(115%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @keyframes floatBadge {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-4px); }
+    }
+    .animate-float {
+      animation: floatBadge 2.6s ease-in-out infinite;
+    }
+
+    #toast-box {
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 3D WebGL Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Floating 3D Perspective / Camera Viewpoint Switcher -->
+  <div id="camera-view-bar" class="fixed bottom-4 right-3 sm:right-4 z-30 pointer-events-auto flex flex-col items-end gap-2">
+    <div id="fpv-hint" class="hidden bg-slate-900/90 text-amber-200 border border-amber-400/70 rounded-2xl px-3.5 py-2 text-xs shadow-lg backdrop-blur-md">
+      <div class="font-black text-amber-300 mb-0.5"><i class="fa-solid fa-person-walking"></i> 第一人稱草坪漫步模式</div>
+      <div>按 <b>W A S D</b> 或 <b>方向鍵</b> 移動 • 拖曳畫面環顧四周</div>
+    </div>
+    <div class="pvz-panel rounded-2xl p-1.5 shadow-xl flex flex-wrap items-center gap-1 sm:gap-1.5 border-2 border-sky-500">
+      <span class="text-[11px] font-black text-sky-900 px-2 hidden sm:inline-flex items-center gap-1">
+        <i class="fa-solid fa-video text-sky-600"></i> 3D視角
+      </span>
+      <button id="cam-btn-overview" onclick="Engine.setCameraPreset('overview')"
+        class="cam-preset-btn pvz-btn bg-sky-500 text-white font-bold px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs flex items-center gap-1">
+        <i class="fa-solid fa-earth-asia"></i> <span>3D 俯瞰全景</span>
+      </button>
+      <button id="cam-btn-isometric" onclick="Engine.setCameraPreset('isometric')"
+        class="cam-preset-btn pvz-btn bg-white hover:bg-sky-50 text-sky-950 font-bold px-2.5 py-1.5 rounded-xl border border-sky-200 text-[11px] sm:text-xs flex items-center gap-1">
+        <i class="fa-solid fa-cube"></i> <span>3D 斜角探索</span>
+      </button>
+      <button id="cam-btn-closeup" onclick="Engine.setCameraPreset('closeup')"
+        class="cam-preset-btn pvz-btn bg-white hover:bg-sky-50 text-sky-950 font-bold px-2.5 py-1.5 rounded-xl border border-sky-200 text-[11px] sm:text-xs flex items-center gap-1">
+        <i class="fa-solid fa-magnifying-glass-plus"></i> <span>島嶼近距離特寫</span>
+      </button>
+      <button id="cam-btn-fpv" onclick="Engine.setCameraPreset('fpv')"
+        class="cam-preset-btn pvz-btn bg-white hover:bg-sky-50 text-sky-950 font-bold px-2.5 py-1.5 rounded-xl border border-sky-200 text-[11px] sm:text-xs flex items-center gap-1">
+        <i class="fa-solid fa-person-walking"></i> <span>第一人稱漫步</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Floating Quick Bar (Always accessible) -->
+  <header class="fixed top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-none gap-2">
+    <!-- Left Expand Button + Compact Title Pill -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <button id="btn-toggle-left" onclick="UI.toggleLeftSidebar()" title="收合或展開左側導覽欄"
+        class="pvz-btn bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold px-3.5 py-2.5 rounded-2xl border-2 border-amber-600 flex items-center gap-2 text-sm">
+        <i id="icon-toggle-left" class="fa-solid fa-bars-staggered"></i>
+        <span class="hidden sm:inline">探索導覽</span>
+      </button>
+
+      <div class="bg-white/90 backdrop-blur-md border-2 border-lime-500 rounded-2xl px-3.5 py-2 shadow-md flex items-center gap-2.5">
+        <span class="text-xl">🌻</span>
+        <div>
+          <h1 class="text-sm sm:text-base font-black text-emerald-900 leading-tight tracking-wide">植物大戰殭屍 3D 冒險群島</h1>
+          <p class="text-[11px] text-emerald-700 hidden md:block">點擊浮空島或角色展開探索 • 支援滑鼠與觸控環顧</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center / Right Quick Action Pills -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <!-- Quality Selector -->
+      <div class="hidden lg:flex items-center bg-white/90 backdrop-blur-md border-2 border-sky-400 rounded-2xl px-2.5 py-1.5 shadow-md gap-1.5 text-xs">
+        <i class="fa-solid fa-gauge-high text-sky-600"></i>
+        <span class="font-bold text-slate-700">畫質:</span>
+        <select id="quality-select" onchange="Engine.setQuality(this.value)" class="bg-sky-50 text-sky-900 font-bold rounded-lg px-2 py-0.5 border border-sky-300 focus:outline-none cursor-pointer">
+          <option value="auto" selected>自動偵測</option>
+          <option value="high">高畫質</option>
+          <option value="medium">中畫質</option>
+          <option value="low">省電流暢</option>
+        </select>
+      </div>
+
+      <!-- Reset Camera -->
+      <button onclick="Engine.setCameraPreset('overview')" title="回到 3D 俯瞰全景視角"
+        class="pvz-btn bg-sky-500 hover:bg-sky-400 text-white font-bold px-3 py-2.5 rounded-2xl border-2 border-sky-700 text-xs sm:text-sm flex items-center gap-1.5">
+        <i class="fa-solid fa-earth-asia"></i>
+        <span class="hidden sm:inline">群島總覽</span>
+      </button>
+
+      <!-- Builder Workshop Toggle -->
+      <button id="btn-toggle-builder" onclick="Builder.toggleMode()"
+        class="pvz-btn bg-orange-500 hover:bg-orange-400 text-white font-bold px-3.5 py-2.5 rounded-2xl border-2 border-orange-700 text-xs sm:text-sm flex items-center gap-1.5">
+        <i class="fa-solid fa-hammer"></i>
+        <span>創意建造工坊</span>
+      </button>
+
+      <!-- Project Architecture & Docs -->
+      <button onclick="UI.openArchModal()" title="檢視 Vite + TypeScript 專案架構與資料來源"
+        class="pvz-btn bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3 py-2.5 rounded-2xl border-2 border-emerald-900 text-xs sm:text-sm flex items-center gap-1.5">
+        <i class="fa-solid fa-code"></i>
+        <span class="hidden md:inline">專案架構</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast Notification Banner -->
+  <div id="toast-box" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 opacity-0 pointer-events-none transform -translate-y-3">
+    <div id="toast-content" class="bg-emerald-900/95 text-amber-200 border-2 border-amber-400 px-5 py-2.5 rounded-full shadow-xl font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+      <i class="fa-solid fa-sun text-amber-400"></i>
+      <span id="toast-text">歡迎來到植物大戰殭屍 3D 冒險群島！</span>
+    </div>
+  </div>
+
+  <!-- Guided Tour Floating Bar (Visible when tour is active) -->
+  <div id="tour-bar" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-auto">
+    <div class="pvz-panel rounded-3xl px-4 py-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3 shadow-2xl">
+      <div class="flex items-center gap-2 pr-2 border-r border-lime-300">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+        <span id="tour-status-label" class="text-xs sm:text-sm font-black text-emerald-900">自動導覽中 (1/8)</span>
+      </div>
+      <button onclick="Tour.prev()" class="pvz-btn bg-lime-100 hover:bg-lime-200 text-emerald-900 font-bold px-3 py-1.5 rounded-xl border border-lime-400 text-xs">
+        <i class="fa-solid fa-backward-step"></i> 上一座
+      </button>
+      <button id="btn-tour-pause" onclick="Tour.togglePause()" class="pvz-btn bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold px-3.5 py-1.5 rounded-xl border border-amber-600 text-xs">
+        <i class="fa-solid fa-pause"></i> 暫停
+      </button>
+      <button onclick="Tour.next()" class="pvz-btn bg-lime-100 hover:bg-lime-200 text-emerald-900 font-bold px-3 py-1.5 rounded-xl border border-lime-400 text-xs">
+        下一座 <i class="fa-solid fa-forward-step"></i>
+      </button>
+      <button onclick="Tour.stop()" class="pvz-btn bg-rose-500 hover:bg-rose-400 text-white font-bold px-3 py-1.5 rounded-xl border border-rose-700 text-xs">
+        <i class="fa-solid fa-stop"></i> 結束導覽
+      </button>
+    </div>
+  </div>
+
+  <!-- LEFT SIDEBAR: Navigation, Passport, Tour & Island List -->
+  <aside id="left-sidebar" class="left-drawer fixed top-16 bottom-3 left-3 w-[88vw] max-w-[340px] z-25 pvz-panel rounded-3xl flex flex-col overflow-hidden pointer-events-auto">
+    <!-- Sidebar Header -->
+    <div class="bg-gradient-to-r from-lime-500 to-emerald-600 px-4 py-3 text-white flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-compass text-amber-300 text-lg"></i>
+        <span class="font-black tracking-wide text-base">花園探險家護照</span>
+      </div>
+      <button onclick="UI.toggleLeftSidebar()" class="bg-white/20 hover:bg-white/30 rounded-xl px-2.5 py-1 text-xs font-bold flex items-center gap-1">
+        <i class="fa-solid fa-chevron-left"></i> 收合
+      </button>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div class="p-4 overflow-y-auto custom-scroll space-y-4 flex-1">
+      <!-- Intro Card -->
+      <div class="bg-lime-50/90 border-2 border-lime-300 rounded-2xl p-3 text-xs text-emerald-950 leading-relaxed">
+        <p class="font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
+          <i class="fa-solid fa-seedling text-lime-600"></i> 歡迎來到草坪群島世界！
+        </p>
+        探索 8 座依據《植物大戰殭屍》真實開發歷史與經典遊戲機制打造的 3D 浮空島。點擊島嶼建築認識知識、與巡邏角色對話，還能自己搭建跨島橋梁！
+      </div>
+
+      <!-- Mission Passport Progress -->
+      <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3.5 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-black text-amber-900 flex items-center gap-1.5">
+            <i class="fa-solid fa-award text-amber-500 text-base"></i> 探險任務護照
+          </span>
+          <span id="passport-percent" class="text-xs font-black bg-amber-400 text-amber-950 px-2.5 py-0.5 rounded-full">0%</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full h-3 bg-amber-200/80 rounded-full overflow-hidden border border-amber-300 mb-2.5">
+          <div id="passport-bar" class="h-full bg-gradient-to-r from-lime-500 to-emerald-500 transition-all duration-500" style="width: 0%"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center text-xs mb-3">
+          <div class="bg-white rounded-xl p-2 border border-amber-200">
+            <div class="text-slate-500 text-[11px]">已完成島嶼</div>
+            <div id="passport-completed" class="font-black text-emerald-700 text-sm">0 / 8</div>
+          </div>
+          <div class="bg-white rounded-xl p-2 border border-amber-200">
+            <div class="text-slate-500 text-[11px]">待探索島嶼</div>
+            <div id="passport-remaining" class="font-black text-orange-600 text-sm">8 座</div>
+          </div>
+        </div>
+
+        <!-- Collected Badges Grid -->
+        <div>
+          <div class="text-[11px] font-bold text-amber-900 mb-1.5">已收集成就徽章：</div>
+          <div id="badge-grid" class="grid grid-cols-4 gap-1.5">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <p class="text-[10px] text-amber-700/80 mt-2 text-right">
+          <i class="fa-solid fa-floppy-disk"></i> 進度自動儲存於本機瀏覽器
+        </p>
+      </div>
+
+      <!-- Auto Guided Tour Trigger -->
+      <div class="bg-sky-50 border-2 border-sky-300 rounded-2xl p-3 flex items-center justify-between gap-2">
+        <div>
+          <div class="text-xs font-black text-sky-950">群島自動飛行導覽</div>
+          <div class="text-[11px] text-sky-700">平滑巡禮 8 座植物主題島嶼</div>
+        </div>
+        <button onclick="Tour.start()" class="pvz-btn bg-sky-500 hover:bg-sky-400 text-white font-bold px-3.5 py-2 rounded-xl border border-sky-700 text-xs shrink-0 flex items-center gap-1.5">
+          <i class="fa-solid fa-play"></i> 開始導覽
+        </button>
+      </div>
+
+      <!-- 8 Islands Quick Directory -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-black text-emerald-900">
+            <i class="fa-solid fa-map-location-dot text-emerald-600"></i> 群島地圖目錄 (8座)
+          </span>
+          <span class="text-[11px] text-slate-500">點擊飛往島嶼</span>
+        </div>
+        <div id="island-list" class="space-y-2">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Controls Guide -->
+      <div class="bg-slate-100/90 border border-slate-300 rounded-2xl p-3 text-[11px] text-slate-700 space-y-1">
+        <div class="font-black text-slate-800 mb-1"><i class="fa-solid fa-gamepad text-emerald-600"></i> 3D 視角與操作小幫手</div>
+        <div>• <b>旋轉 3D 視角</b>：滑鼠左鍵拖曳 / 單指滑動</div>
+        <div>• <b>縮放遠近</b>：滾輪滑動 / 雙指捏合</div>
+        <div>• <b>平移 / 漫步</b>：右鍵拖曳、雙指拖曳 或 WASD 鍵</div>
+        <div>• <b>探索與對話</b>：直接點擊島嶼建築或巡邏角色</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- RIGHT DRAWER: Island Detail, Real Data, Photo, Quiz OR NPC Dialogue -->
+  <aside id="right-drawer" class="right-drawer collapsed fixed top-16 bottom-3 right-3 w-[90vw] max-w-[390px] z-25 pvz-panel rounded-3xl flex flex-col overflow-hidden pointer-events-auto">
+    <!-- Dynamic Header -->
+    <div id="right-header" class="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-white flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2 truncate">
+        <span id="right-header-icon" class="text-xl">🌻</span>
+        <h2 id="right-header-title" class="font-black text-base truncate">島嶼主題資料</h2>
+      </div>
+      <button onclick="UI.closeRightDrawer()" class="bg-white/25 hover:bg-white/40 rounded-xl w-8 h-8 flex items-center justify-center font-bold">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Dynamic Body -->
+    <div id="right-body" class="p-4 overflow-y-auto custom-scroll space-y-4 flex-1">
+      <!-- Populated dynamically when clicking an island or NPC -->
+    </div>
+  </aside>
+
+  <!-- BOTTOM WORKBENCH PANEL: Creative Island Builder & Bridge System -->
+  <section id="builder-panel" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 w-[95vw] max-w-[920px] hidden pointer-events-auto">
+    <div class="pvz-panel rounded-3xl p-3 sm:p-4 shadow-2xl border-orange-500">
+      <!-- Top Row: Mode & History Controls -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-amber-200">
+        <div class="flex items-center gap-2">
+          <span class="bg-orange-500 text-white text-xs font-black px-2.5 py-1 rounded-xl flex items-center gap-1.5">
+            <i class="fa-solid fa-trowel-bricks"></i> 創意建造工坊
+          </span>
+          <span id="builder-hint" class="text-xs font-bold text-emerald-900">
+            選擇下方物件，點擊島嶼草地即可放置！
+          </span>
+        </div>
+
+        <!-- Action Toolbar -->
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button id="btn-bridge-tool" onclick="Builder.activateBridgeTool()"
+            class="pvz-btn bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-1.5 rounded-xl border border-indigo-800 text-xs flex items-center gap-1">
+            <i class="fa-solid fa-bridge"></i> 跨島橋梁連接
+          </button>
+          <button id="btn-select-tool" onclick="Builder.activateSelectTool()"
+            class="pvz-btn bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1.5 rounded-xl border border-emerald-800 text-xs flex items-center gap-1">
+            <i class="fa-solid fa-arrow-pointer"></i> 選取/移動
+          </button>
+          <button onclick="Builder.rotateSelected()" title="旋轉 45 度 (R鍵)"
+            class="pvz-btn bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold px-2.5 py-1.5 rounded-xl border border-amber-400 text-xs">
+            <i class="fa-solid fa-rotate-right"></i> 旋轉
+          </button>
+          <button onclick="Builder.deleteSelected()" title="刪除選取物件或橋梁"
+            class="pvz-btn bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2.5 py-1.5 rounded-xl border border-rose-300 text-xs">
+            <i class="fa-solid fa-trash"></i> 刪除
+          </button>
+          <button id="btn-undo" onclick="Builder.undo()" title="撤銷上一步"
+            class="pvz-btn bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs">
+            <i class="fa-solid fa-undo"></i> 撤銷
+          </button>
+          <button id="btn-redo" onclick="Builder.redo()" title="恢復下一步"
+            class="pvz-btn bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs">
+            <i class="fa-solid fa-redo"></i> 重做
+          </button>
+          <button onclick="Builder.clearCustom()" title="清空所有自建物件與橋梁"
+            class="pvz-btn bg-orange-100 hover:bg-orange-200 text-orange-900 font-bold px-2.5 py-1.5 rounded-xl border border-orange-300 text-xs">
+            清空自建
+          </button>
+          <button onclick="Builder.resetDefault()" title="還原預設島嶼狀態"
+            class="pvz-btn bg-slate-700 hover:bg-slate-600 text-white font-bold px-2.5 py-1.5 rounded-xl text-xs">
+            還原預設
+          </button>
+          <button onclick="Builder.toggleMode()" class="pvz-btn bg-rose-500 text-white font-bold px-2.5 py-1.5 rounded-xl text-xs">
+            關閉
+          </button>
+        </div>
+      </div>
+
+      <!-- 12 Buildable Items Palette -->
+      <div id="builder-palette" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-12 gap-1.5">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- MODAL: Project Architecture, Separated Data Modules & Deployment Docs -->
+  <div id="arch-modal" class="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-6 pointer-events-auto">
+    <div class="pvz-panel rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
+      <div class="bg-gradient-to-r from-emerald-800 to-teal-700 px-5 py-3.5 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-folder-tree text-amber-300 text-lg"></i>
+          <h3 class="font-black text-base sm:text-lg">分離式資料架構、真實文獻清單與 Vite 部署指南</h3>
+        </div>
+        <button onclick="UI.closeArchModal()" class="bg-white/20 hover:bg-white/30 rounded-xl w-8 h-8 flex items-center justify-center font-bold">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto custom-scroll space-y-4 text-xs sm:text-sm text-slate-800">
+        <div class="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3.5">
+          <h4 class="font-black text-emerald-900 mb-1">1. 資料與 3D 引擎分離設計說明</h4>
+          <p class="text-slate-700 leading-relaxed">
+            本系統將主題資料（<code>PVZ_THEME_DATA</code>）與 Three.js 場景渲染器（<code>Engine</code>）、NPC 尋路系統（<code>NPCSystem</code>）、創意建造與跨島橋梁系統（<code>Builder</code>）完全解耦。未來若要更換其他教育主題，僅需替換資料陣列即可重用整套浮空島引擎。
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="bg-white border border-slate-300 rounded-2xl p-3.5">
+            <h4 class="font-black text-slate-900 mb-2"><i class="fa-solid fa-sitemap text-sky-600"></i> 模組化專案目錄結構</h4>
+            <pre class="bg-slate-900 text-lime-300 p-3 rounded-xl text-[11px] overflow-x-auto leading-relaxed">pvz-3d-islands/
+├── index.html
+├── package.json
+├── vite.config.ts
+├── src/
+│   ├── main.ts              # 應用程式入口
+│   ├── style.css            # 響應式樣式與配色
+│   ├── data/
+│   │   └── pvzIslands.ts    # 8座島嶼真實資料與問答
+│   ├── world/
+│   │   ├── IslandEngine.ts  # Three.js 場景與光影
+│   │   └── IslandMesh.ts    # Low Poly 島嶼與地標建模
+│   ├── characters/
+│   │   └── NPCSystem.ts     # 避障巡邏與跨橋尋路
+│   ├── builders/
+│   │   └── Workshop.ts      # 12種建造物與橋梁系統
+│   └── ui/
+│       └── Interface.ts     # 護照、導覽與抽屜面板</pre>
+          </div>
+
+          <div class="bg-white border border-slate-300 rounded-2xl p-3.5 space-y-2">
+            <h4 class="font-black text-slate-900"><i class="fa-solid fa-rocket text-orange-500"></i> 本機啟動與 GitHub Pages 部署</h4>
+            <pre class="bg-slate-900 text-amber-200 p-3 rounded-xl text-[11px] overflow-x-auto leading-relaxed"># 1. 安裝依賴
+npm install three @types/three vite typescript
+
+# 2. 本機開發測試
+npm run dev
+
+# 3. 建置正式版靜態檔案
+npm run build
+
+# 4. 部署至 GitHub Pages (設定 base: './')
+npx gh-pages -d dist</pre>
+            <div class="text-[11px] text-slate-600">
+              <b>功能自檢狀態：</b>WebGL 浮空島渲染、OrbitControls 雙端觸控、Raycasting 地面貼合、Undo/Redo、跨島橋梁與 NPC 跨橋移動、LocalStorage 進度保存皆已實作並可直接在目前頁面操作。
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3.5">
+          <h4 class="font-black text-amber-950 mb-2"><i class="fa-solid fa-book-open text-amber-600"></i> 可驗證資料來源與 Wikimedia Commons 圖片授權清單</h4>
+          <ul class="space-y-1.5 text-xs text-slate-700 list-disc pl-5">
+            <li><b>Plants vs. Zombies 官方資料：</b>Electronic Arts (EA) 官方網站 (<a href="https://www.ea.com/games/plants-vs-zombies/plants-vs-zombies" target="_blank" rel="noopener noreferrer" class="text-sky-700 underline font-bold">ea.com/games/plants-vs-zombies</a>)</li>
+            <li><b>開發歷史與設計師考證：</b>Wikipedia - Plants vs. Zombies (<a href="https://en.wikipedia.org/wiki/Plants_vs._Zombies" target="_blank" rel="noopener noreferrer" class="text-sky-700 underline font-bold">en.wikipedia.org/wiki/Plants_vs._Zombies</a>)，記載 2009 年 5 月 5 日由 PopCap Games 發行、George Fan 設計、Laura Shigihara 作曲。</li>
+            <li><b>真實植物參考攝影（CC BY-SA 授權）：</b>採用 Wikimedia Commons 公開授權之真實向日葵（<i>Helianthus annuus</i>）、豌豆（<i>Pisum sativum</i>）、核桃（<i>Juglans regia</i>）、睡蓮（<i>Nymphaea</i>）等真實植物攝影與授權標示，絕不使用 AI 生成圖片冒充真實攝影。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * 第一階段：主題研究與分離式資料模組 (PVZ_THEME_DATA)
+     * ============================================================================
+     */
+    const PVZ_THEME_DATA = {
+      themeTitle: "植物大戰殭屍 (Plants vs. Zombies)",
+      subtitle: "PopCap 經典塔防策略與園藝冒險群島",
+      islands: [
+        {
+          id: "popcap-origin",
+          name: "PopCap 起源草坪島",
+          subtitle: "2009 經典前院草坪與開發起源",
+          icon: "🏡",
+          badgeName: "草坪開拓者徽章",
+          position: { x: -34, y: 2, z: -22 },
+          radius: 10.5,
+          height: 5.5,
+          themeColor: "#66bb6a",
+          topColor: "#7cb342",
+          cliffColor: "#8d6e63",
+          landmarkType: "lawnHouse",
+          summary: "《植物大戰殭屍》（Plants vs. Zombies）是由美國寶開遊戲（PopCap Games）開發的塔防策略遊戲，於 2009 年 5 月 5 日率先在 Windows 與 Mac OS X 平台推出。遊戲由設計師 George Fan 主導設計，靈感源自他早期的《Insaniquarium》以及《魔獸爭霸III》塔防地圖，並由作曲家 Laura Shigihara 創作經典配樂〈Zombies on Your Lawn〉。",
+          funFact: "在早期開發階段，這當遊戲曾被暫時命名為《Weedlings》以及向經典電影致敬的《Lawn of the Dead》，後來才正式定名為《Plants vs. Zombies》！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Suburban_lawn_and_house.jpg/640px-Suburban_lawn_and_house.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Category:Lawns",
+            caption: "美式郊區住宅前院草坪實景（遊戲經典 5x9 草坪戰場靈感來源）",
+            credit: "Wikimedia Commons 公開領域 / CC 授權攝影資源",
+            sourcePage: "https://en.wikipedia.org/wiki/Plants_vs._Zombies"
+          },
+          sources: [
+            { title: "Wikipedia: Plants vs. Zombies 開發歷史", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies" },
+            { title: "EA 官方《植物大戰殭屍》介紹頁", url: "https://www.ea.com/games/plants-vs-zombies/plants-vs-zombies" }
+          ],
+          quiz: {
+            question: "《植物大戰殭屍》初代最初是在哪一年由 PopCap Games 正式發行的？",
+            options: ["2005 年", "2009 年", "2014 年"],
+            answerIndex: 1,
+            explanation: "答對了！遊戲於 2009 年 5 月 5 日正式在 PC 與 Mac 平台推出，隨即風靡全球。"
+          },
+          npcs: [
+            { id: "npc-fan", name: "草坪設計師小喬", role: "關卡規劃師", color: "#43a047", hat: "cap", dialogue: "歡迎來到前院草坪！我們把院子劃分成 5 條橫向草道，讓每一株植物都能發揮獨特的戰術價值。" },
+            { id: "npc-laura", name: "旋律園丁蘿拉", role: "草坪音樂家", color: "#ffb300", hat: "flower", dialogue: "聽見草坪上的輕快旋律了嗎？〈Zombies on Your Lawn〉就是為了慶祝成功守護家園而寫的歌！" }
+          ]
+        },
+        {
+          id: "sunflower-greenhouse",
+          name: "向日葵陽光溫室島",
+          subtitle: "陽光資源經濟與光合作用基地",
+          icon: "🌻",
+          badgeName: "黃金陽光徽章",
+          position: { x: -12, y: 4.5, z: -28 },
+          radius: 10,
+          height: 6,
+          themeColor: "#ffca28",
+          topColor: "#8bc34a",
+          cliffColor: "#a1887f",
+          landmarkType: "greenhouse",
+          summary: "向日葵（Sunflower）是《植物大戰殭屍》中最核心的經濟型植物。在日間關卡中，除了天空會定期掉落陽光外，玩家必須種植向日葵來穩定生產額外陽光（每株每次產出 25 點陽光），才能購買並種植其他具備攻擊或防禦能力的植物，建立完整的資源循環節奏。",
+          funFact: "在初代遊戲的片尾 MV 中，向日葵擔任主唱並親自演唱主題曲，成為整個《植物大戰殭屍》系列最具代表性的吉祥物！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Sunflower_sky_backdrop.jpg/640px-Sunflower_sky_backdrop.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Helianthus_annuus",
+            caption: "真實向日葵（Helianthus annuus）朝向陽光綻放的自然攝影",
+            credit: "Bruce Marlin / Wikimedia Commons (CC BY-SA 2.5)",
+            sourcePage: "https://commons.wikimedia.org/wiki/File:Sunflower_sky_backdrop.jpg"
+          },
+          sources: [
+            { title: "Wikimedia Commons: Helianthus annuus (向日葵)", url: "https://commons.wikimedia.org/wiki/Helianthus_annuus" },
+            { title: "Wikipedia: Plants vs. Zombies 遊戲機制", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies#Gameplay" }
+          ],
+          quiz: {
+            question: "在經典模式中，種植一株向日葵需要消耗多少陽光？",
+            options: ["50 陽光", "100 陽光", "200 陽光"],
+            answerIndex: 0,
+            explanation: "完全正確！向日葵僅需 50 陽光即可種植，是開局建立陽光經濟的第一步。"
+          },
+          npcs: [
+            { id: "npc-sunny", name: "陽光培育員小葵", role: "溫室園丁", color: "#fdd835", hat: "sun", dialogue: "記得在最左側兩排多種幾株向日葵！充足的陽光能量是抵禦殭屍大軍的關鍵。" },
+            { id: "npc-botanist", name: "光合研究員阿光", role: "植物學家", color: "#2e7d32", hat: "visor", dialogue: "真實世界中的向日葵幼苗會隨著太陽東升西落轉動，這叫做『向日性』喔！" }
+          ]
+        },
+        {
+          id: "peashooter-fort",
+          name: "豌豆射手防線堡壘島",
+          subtitle: "第一道遠程火力與棋盤防禦陣線",
+          icon: "🌱",
+          badgeName: "神準豌豆徽章",
+          position: { x: 13, y: 3, z: -26 },
+          radius: 10.5,
+          height: 5.5,
+          themeColor: "#4caf50",
+          topColor: "#689f38",
+          cliffColor: "#795548",
+          landmarkType: "peaFort",
+          summary: "豌豆射手（Peashooter）是玩家在遊戲第一關解鎖的第一種攻擊型植物。它消耗 100 陽光，會朝前方的單一草道發射豌豆子彈。隨著關卡推進，還衍生出一次發射兩顆的雙發射手（Repeater）、具備減速效果的寒冰射手（Snow Pea）以及四發的機槍射手（Gatling Pea）。",
+          funFact: "寒冰射手發射的冰豌豆雖然能讓殭屍移動與攻擊速度減半，但如果冰豌豆穿過火炬樹樁（Torchwood），就會變成普通火球並解除殭屍的冰凍減速狀態！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Peas_in_pods_-_Studio.jpg/640px-Peas_in_pods_-_Studio.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Pisum_sativum",
+            caption: "真實豌豆（Pisum sativum）豆莢與圓潤綠色豌豆實拍照片",
+            credit: "Bill Ebbesen / Wikimedia Commons (CC BY-SA 3.0)",
+            sourcePage: "https://commons.wikimedia.org/wiki/File:Peas_in_pods_-_Studio.jpg"
+          },
+          sources: [
+            { title: "Wikimedia Commons: Pisum sativum (豌豆)", url: "https://commons.wikimedia.org/wiki/Pisum_sativum" },
+            { title: "EA 官方網站：認識植物夥伴", url: "https://www.ea.com/games/plants-vs-zombies" }
+          ],
+          quiz: {
+            question: "寒冰射手（Snow Pea）發射的冰豌豆擊中殭屍時，會產生什麼特殊效果？",
+            options: ["讓殭屍移動與攻擊減速", "把殭屍變成向日葵", "讓殭屍跳得更高"],
+            answerIndex: 0,
+            explanation: "答對了！冰豌豆能讓殭屍進入冰冷減速狀態，為防線爭取寶貴的輸出時間。"
+          },
+          npcs: [
+            { id: "npc-pea1", name: "豌豆哨兵阿綠", role: "防線隊長", color: "#43a047", hat: "helmet", dialogue: "立正！雙發射手加上火炬樹樁，能讓豌豆火力瞬間翻倍，是前院最可靠的組合！" },
+            { id: "npc-pea2", name: "寒冰觀測員小雪", role: "冷卻技師", color: "#29b6f6", hat: "cap", dialogue: "遇到速度飛快的撐桿跳殭屍或橄欖球殭屍時，派寒冰射手減速就對了！" }
+          ]
+        },
+        {
+          id: "wallnut-citadel",
+          name: "堅果牆防禦要塞島",
+          subtitle: "高耐久前排護盾與堅果保齡球",
+          icon: "🥔",
+          badgeName: "銅牆鐵壁徽章",
+          position: { x: 34, y: 1.5, z: -14 },
+          radius: 9.8,
+          height: 6.2,
+          themeColor: "#d97742",
+          topColor: "#8bc34a",
+          cliffColor: "#6d4c41",
+          landmarkType: "wallnutWall",
+          summary: "堅果牆（Wall-nut）擁有極高的生命值，只需 50 陽光就能種植在防線最前方，專門用來阻擋殭屍前進並保護後排的輸出植物。當堅果牆受到啃咬損傷時，外觀會出現明顯的裂痕與表情變化，提醒玩家使用「堅果包紮術」進行修復。",
+          funFact: "在冒險模式的 1-5 關卡中，堅果牆化身為「堅果保齡球」小遊戲的主角，在草坪上滾動並連續彈射撞飛成群的殭屍！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Walnuts_-_whole_and_open_with_halved_kernel.jpg/640px-Walnuts_-_whole_and_open_with_halved_kernel.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Juglans_regia",
+            caption: "真實核桃（Juglans regia）堅硬外殼實拍照片（Wall-nut 造型原型）",
+            credit: "Ivar Leidus / Wikimedia Commons (CC BY-SA 4.0)",
+            sourcePage: "https://commons.wikimedia.org/wiki/File:Walnuts_-_whole_and_open_with_halved_kernel.jpg"
+          },
+          sources: [
+            { title: "Wikimedia Commons: Juglans regia (核桃)", url: "https://commons.wikimedia.org/wiki/Juglans_regia" },
+            { title: "Wikipedia: Plants vs. Zombies 關卡與迷你遊戲", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies" }
+          ],
+          quiz: {
+            question: "在經典小遊戲中，堅果牆被用來進行哪一種趣味運動玩法？",
+            options: ["堅果保齡球", "堅果羽毛球", "堅果游泳賽"],
+            answerIndex: 0,
+            explanation: "沒錯！『堅果保齡球』是玩家最喜愛的經典關卡之一，撞擊多隻殭屍還會發出清脆的連擊音效。"
+          },
+          npcs: [
+            { id: "npc-nut1", name: "鐵壁守衛大核", role: "要塞盾衛", color: "#a1887f", hat: "helmet", dialogue: "別看我外表圓滾滾的，我可是能幫後面的豌豆射手擋下好幾十口啃咬呢！" },
+            { id: "npc-nut2", name: "保齡球手小圓", role: "運動教練", color: "#ef6c00", hat: "visor", dialogue: "看到紅色的爆炸堅果了嗎？滾出去就能清掉一整片殭屍群！" }
+          ]
+        },
+        {
+          id: "crazydave-shop",
+          name: "瘋狂戴夫花園商店島",
+          subtitle: "Twiddydinkies 後車廂補給站",
+          icon: "🍳",
+          badgeName: "戴夫金鍋徽章",
+          position: { x: -32, y: 1, z: 12 },
+          radius: 10.2,
+          height: 5.2,
+          themeColor: "#ff7043",
+          topColor: "#9ccc65",
+          cliffColor: "#8d6e63",
+          landmarkType: "daveVan",
+          summary: "瘋狂戴夫（Crazy Dave）是玩家的鄰居與重要導師，頭上總是戴著一只銀色平底鍋，說話帶著獨特的「Wabby Wabbo!」語調。他在自己老舊汽車的後車廂開設了「Crazy Dave's Twiddydinkies」商店，販售額外植物卡槽、機槍射手等升級植物、草坪推草機升級與禪境花園道具。",
+          funFact: "戴夫曾解釋他頭上戴平底鍋的原因——因為他「瘋狂（CRAZY!）」，這個經典形象在後續的《花園戰爭》系列中也持續登場。",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Gardening_tools_and_pots.jpg/640px-Gardening_tools_and_pots.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Category:Gardening_tools",
+            caption: "園藝花盆與栽培工具實景（禪境花園與戴夫園藝店靈感）",
+            credit: "Wikimedia Commons 公開授權園藝攝影資源",
+            sourcePage: "https://en.wikipedia.org/wiki/Plants_vs._Zombies"
+          },
+          sources: [
+            { title: "Wikipedia: Plants vs. Zombies 角色與商店系統", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies" },
+            { title: "EA 官方《植物大戰殭屍》系列總覽", url: "https://www.ea.com/games/plants-vs-zombies" }
+          ],
+          quiz: {
+            question: "瘋狂戴夫在遊戲中頭上總是戴著什麼物品？",
+            options: ["銀色平底鍋", "魔法師尖帽", "潛水蛙鏡"],
+            answerIndex: 0,
+            explanation: "答對了！頭戴平底鍋、滿臉大鬍子的瘋狂戴夫是系列作最深植人心的角色。"
+          },
+          npcs: [
+            { id: "npc-dave", name: "戴鍋子鄰居大叔", role: "後車廂店長", color: "#ef5350", hat: "pot", dialogue: "Wabby Wabbo！想要擴充植物卡槽，或是買把金水壺照顧禪境花園嗎？來我的後車廂看看！" },
+            { id: "npc-zen", name: "禪境園藝師小苗", role: "花圃管理員", color: "#66bb6a", hat: "flower", dialogue: "在禪境花園裡幫植物澆水、施肥和放音樂，它們就會開心吐出金幣喔！" }
+          ]
+        },
+        {
+          id: "pool-fog-backyard",
+          name: "泳池與迷霧後院島",
+          subtitle: "水陸雙棲戰線、睡蓮與燈籠草",
+          icon: "🪷",
+          badgeName: "水陸領航徽章",
+          position: { x: -8, y: 0.5, z: 22 },
+          radius: 11,
+          height: 5,
+          themeColor: "#26c6da",
+          topColor: "#7cb342",
+          cliffColor: "#607d8b",
+          landmarkType: "poolGarden",
+          summary: "進入冒險模式第三大關「泳池」與第四大關「迷霧」後，戰場從前院轉移到擁有中央雙水道泳池的後院，草道增加為 6 條。陸地植物無法直接種 in 水中，必須先放置水生的「睡蓮」（Lily Pad）作為載體；而在濃霧夜晚則需要三葉草（Blover）吹散迷霧或路燈花（Plantern）照亮視野。",
+          funFact: "泳池關卡中還會出現能將整隻殭屍拖入水底的「纏繞海草」（Tangle Kelp），以及升級版的「香蒲」（Cattail），可以追蹤攻擊全場任意一條路線的氣球殭屍！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Nymphaea_alba_1.jpg/640px-Nymphaea_alba_1.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Nymphaea",
+            caption: "真實白睡蓮（Nymphaea alba）浮水葉片與花朵實拍照片",
+            credit: "Christian Fischer / Wikimedia Commons (CC BY-SA 3.0)",
+            sourcePage: "https://commons.wikimedia.org/wiki/File:Nymphaea_alba_1.jpg"
+          },
+          sources: [
+            { title: "Wikimedia Commons: Nymphaea (睡蓮屬植物)", url: "https://commons.wikimedia.org/wiki/Nymphaea" },
+            { title: "Wikipedia: Plants vs. Zombies 關卡環境設計", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies#Gameplay" }
+          ],
+          quiz: {
+            question: "在後院泳池的水道上，必須先種植哪一種植物才能在上面擺放豌豆射手？",
+            options: ["睡蓮 (Lily Pad)", "向日葵 (Sunflower)", "高堅果 (Tall-nut)"],
+            answerIndex: 0,
+            explanation: "答對了！睡蓮浮在水面上，能讓大多數陸地植物安全地部署在泳池水道中。"
+          },
+          npcs: [
+            { id: "npc-pool1", name: "救生員小蓮", role: "水道引導員", color: "#00acc1", hat: "visor", dialogue: "泳池關卡有 6 條路線！別忘了準備鴨子救生圈殭屍的應對植物，還有水草陷阱喔。" },
+            { id: "npc-fog1", name: "提燈巡守員阿霧", role: "夜霧領航員", color: "#7e57c2", hat: "cap", dialogue: "濃霧遮住視線時，種一株路燈花或吹一陣三葉草風暴，就能看清殭屍的動向！" }
+          ]
+        },
+        {
+          id: "roof-flowerpot",
+          name: "屋頂花盆決戰島",
+          subtitle: "傾斜紅瓦屋頂與投擲類植物戰術",
+          icon: "🪴",
+          badgeName: "屋頂大師徽章",
+          position: { x: 18, y: 4, z: 20 },
+          radius: 10.2,
+          height: 6,
+          themeColor: "#e57373",
+          topColor: "#d84315",
+          cliffColor: "#5d4037",
+          landmarkType: "roofTiles",
+          summary: "冒險模式的最終舞台來到房屋的傾斜紅瓦屋頂。由於屋頂沒有泥土，玩家必須先放置「花盆」（Flower Pot）才能種植植物；同時因為屋頂前半段具有向上傾斜的角度，直線射擊的豌豆會撞上屋脊，因此需要改用「捲心菜投手」、「玉米投手」與「西瓜投手」等拋物線投擲植物。",
+          funFact: "屋頂關卡還會出現從天而降的「蹦極殭屍」（Bungee Zombie），專門偷走玩家陣地裡的植物，必須靠「葉子保護傘」（Umbrella Leaf）彈開它們！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Terracotta_flower_pots.jpg/640px-Terracotta_flower_pots.jpg",
+            fallbackUrl: "https://commons.wikimedia.org/wiki/Category:Terracotta_flowerpots",
+            caption: "傳統赤陶土花盆（Terracotta Flower Pots）實拍照片",
+            credit: "Wikimedia Commons 公開授權攝影資源",
+            sourcePage: "https://commons.wikimedia.org/wiki/Category:Terracotta_flowerpots"
+          },
+          sources: [
+            { title: "Wikimedia Commons: Terracotta Flowerpots (陶土花盆)", url: "https://commons.wikimedia.org/wiki/Category:Terracotta_flowerpots" },
+            { title: "Wikipedia: Plants vs. Zombies 最終關卡介紹", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies" }
+          ],
+          quiz: {
+            question: "為什麼在屋頂關卡前半段，豌豆射手無法直接打中屋頂另一側的殭屍？",
+            options: ["屋頂有傾斜角度會擋住直線子彈", "豌豆射手怕高不敢射擊", "屋頂沒有陽光"],
+            answerIndex: 0,
+            explanation: "完全正確！屋頂的傾斜地形會阻擋水平彈道，所以投手類（Lobbed-shot）植物成為屋頂戰場的主力！"
+          },
+          npcs: [
+            { id: "npc-roof1", name: "陶盆工匠小瓦", role: "屋頂建築師", color: "#d84315", hat: "cap", dialogue: "在紅瓦屋頂上作戰，第一步永遠是擺好陶土花盆！沒有花盆可是種不了植物的。" },
+            { id: "npc-melon", name: "西瓜投手阿瓜", role: "拋物線砲手", color: "#388e3c", hat: "helmet", dialogue: "冰西瓜投手不僅能越過屋脊精準命中，還能造成範圍冰凍濺射傷害！" }
+          ]
+        },
+        {
+          id: "zomboss-lab",
+          name: "殭屍博士實驗室島",
+          subtitle: "Dr. Zomboss 與巨型機甲 Zombot",
+          icon: "🤖",
+          badgeName: "終極守護者徽章",
+          position: { x: 35, y: 5.5, z: 8 },
+          radius: 10.8,
+          height: 6.5,
+          themeColor: "#7e57c2",
+          topColor: "#546e7a",
+          cliffColor: "#37474f",
+          landmarkType: "zombossLab",
+          summary: "埃德加·喬治·僵王博士（Dr. Edgar George Zomboss）是《植物大戰殭屍》中的最終頭目，擁有巨大的頭腦與科學博士學位。在冒險模式 5-10 關中，他駕駛著巨大的機器人「Zombot」降臨屋頂，能投擲巨型火球與冰球摧毀一整排植物，玩家必須善用「辣椒」與「寒冰菇」抵消極端攻擊。",
+          funFact: "當僵王博士的 Zombot 發射巨型火球滾過草道時，使用「寒冰菇」（Ice-shroom）可以瞬間熄滅火球；反之遇到巨型冰球時，則要用「火爆辣椒」（Jalapeno）將其融化！",
+          realPhoto: {
+            url: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/PopCap_Games_logo.svg/640px-PopCap_Games_logo.svg.png",
+            fallbackUrl: "https://en.wikipedia.org/wiki/PopCap_Games",
+            caption: "開發商 PopCap Games 官方標誌（《植物大戰殭屍》系列原創工作室）",
+            credit: "PopCap Games / Wikimedia Commons",
+            sourcePage: "https://en.wikipedia.org/wiki/PopCap_Games"
+          },
+          sources: [
+            { title: "Wikipedia: PopCap Games 工作室條目", url: "https://en.wikipedia.org/wiki/PopCap_Games" },
+            { title: "Wikipedia: Plants vs. Zombies 頭目戰設計", url: "https://en.wikipedia.org/wiki/Plants_vs._Zombies" }
+          ],
+          quiz: {
+            question: "面對僵王博士駕駛的 Zombot 發射的巨型火球時，應該使用哪種植物來消滅火球？",
+            options: ["寒冰菇 (Ice-shroom)", "向日葵 (Sunflower)", "堅果牆 (Wall-nut)"],
+            answerIndex: 0,
+            explanation: "太厲害了！水火相剋，用寒冰菇凍住火球、用火爆辣椒融化冰球，是擊敗僵王博士的必勝秘訣！"
+          },
+          npcs: [
+            { id: "npc-zombie1", name: "研究助理小僵", role: "實驗室見習生", color: "#78909c", hat: "tie", dialogue: "博士正在校準 Zombot 的機械手臂……不過別擔心，今天我們休戰，歡迎參觀實驗室！" },
+            { id: "npc-cone", name: "路障觀察員阿錐", role: "安全帽測試員", color: "#fb8c00", hat: "cone", dialogue: "你知道嗎？橘色交通路障能幫普通殭屍增加一倍以上的防護力呢！" }
+          ]
+        }
+      ],
+      buildableCatalog: [
+        { id: "house", name: "草坪小屋", icon: "🏠", color: "#ef5350" },
+        { id: "tree", name: "向日葵樹", icon: "🌻", color: "#fdd835" },
+        { id: "flowerbed", name: "陽光花圃", icon: "🌷", color: "#ec407a" },
+        { id: "lamp", name: "花園路燈", icon: "🏮", color: "#ffb300" },
+        { id: "bench", name: "木頭長椅", icon: "🪑", color: "#8d6e63" },
+        { id: "balloon", name: "陽光氣球", icon: "🎈", color: "#ff7043" },
+        { id: "flag", name: "草坪旗幟", icon: "🚩", color: "#43a047" },
+        { id: "woodbridge", name: "園藝木橋", icon: "🌉", color: "#a1887f" },
+        { id: "stonebridge", name: "石拱小橋", icon: "⛩️", color: "#90a4ae" },
+        { id: "road", name: "石板步道", icon: "🧱", color: "#bdbdbd" },
+        { id: "stall", name: "戴夫攤位", icon: "⛺", color: "#ab47bc" },
+        { id: "peaturret", name: "豌豆砲台", icon: "🟢", color: "#66bb6a" }
+      ]
+    };
+
+    /**
+     * ============================================================================
+     * 狀態管理與本地儲存 (AppState)
+     * ============================================================================
+     */
+    const STORAGE_KEY_PROGRESS = "pvz_3d_islands_progress_v1";
+    const STORAGE_KEY_BUILDER = "pvz_3d_islands_builder_v1";
+
+    const AppState = {
+      completedIslands: new Set(),
+      activeIslandId: null,
+      activeNpcId: null,
+      leftCollapsed: window.innerWidth < 768,
+      builderActive: false,
+      selectedTool: "house",
+      selectedObjectUuid: null,
+      bridgeFirstIslandId: null,
+      customObjects: [],
+      bridges: [],
+      undoStack: [],
+      redoStack: [],
+
+      load() {
+        try {
+          const savedProg = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || "[]");
+          if (Array.isArray(savedProg)) {
+            this.completedIslands = new Set(savedProg);
+          }
+        } catch (e) {}
+
+        try {
+          const savedBuild = JSON.parse(localStorage.getItem(STORAGE_KEY_BUILDER) || "null");
+          if (savedBuild && Array.isArray(savedBuild.customObjects)) {
+            this.customObjects = savedBuild.customObjects;
+            this.bridges = Array.isArray(savedBuild.bridges) ? savedBuild.bridges : [];
+          }
+        } catch (e) {}
+      },
+
+      saveProgress() {
+        try {
+          localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify([...this.completedIslands]));
+        } catch (e) {}
+      },
+
+      saveBuilder() {
+        try {
+          localStorage.setItem(STORAGE_KEY_BUILDER, JSON.stringify({
+            customObjects: this.customObjects,
+            bridges: this.bridges
+          }));
+        } catch (e) {}
+      },
+
+      pushUndo() {
+        this.undoStack.push(JSON.stringify({
+          customObjects: this.customObjects,
+          bridges: this.bridges
+        }));
+        if (this.undoStack.length > 30) this.undoStack.shift();
+        this.redoStack = [];
+        UI.updateHistoryButtons();
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 第二階段：Three.js 3D 浮空島引擎 (Engine)
+     * ============================================================================
+     */
+    const Engine = {
+      scene: null,
+      camera: null,
+      renderer: null,
+      controls: null,
+      raycaster: new THREE.Raycaster(),
+      pointer: new THREE.Vector2(),
+      clock: new THREE.Clock(),
+
+      islandGroups: new Map(),
+      islandTopMeshes: [],
+      interactiveTargets: [],
+      clouds: [],
+      sunParticles: null,
+
+      camAnim: {
+        active: false,
+        startPos: new THREE.Vector3(),
+        endPos: new THREE.Vector3(),
+        startTarget: new THREE.Vector3(),
+        endTarget: new THREE.Vector3(),
+        progress: 0,
+        duration: 1.05
+      },
+
+      cameraMode: "overview",
+      keysPressed: {},
+      sunRays: [],
+      quality: "auto",
+      dirLight: null,
+
+      init() {
+        const container = document.getElementById("canvas-container");
+
+        if (typeof THREE === "undefined") {
+          container.innerHTML = `<div class="flex items-center justify-center h-full p-6 text-center">
+            <div class="pvz-panel rounded-3xl p-6 max-w-md">
+              <div class="text-4xl mb-2">🌻</div>
+              <h2 class="font-black text-lg text-emerald-900 mb-2">3D 引擎載入受限</h2>
+              <p class="text-xs text-slate-700">偵測到目前瀏覽環境無法連線至 Three.js CDN，請檢查網路連線後重新整理頁面。</p>
+            </div>
+          </div>`;
+          return;
+        }
+
+        try {
+          this.scene = new THREE.Scene();
+          this.scene.fog = new THREE.FogExp2(0xb3e5fc, 0.0032);
+
+          const width = container.clientWidth || window.innerWidth || 1024;
+          const height = container.clientHeight || window.innerHeight || 768;
+          this.camera = new THREE.PerspectiveCamera(48, width / height, 0.4, 500);
+          this.camera.position.set(0, 48, 86);
+
+          this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+          this.renderer.setSize(width, height);
+          this.renderer.shadowMap.enabled = true;
+          this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+          this.renderer.outputEncoding = THREE.sRGBEncoding;
+          container.innerHTML = "";
+          container.appendChild(this.renderer.domElement);
+
+          this.setQuality("auto");
+
+          // Initialize OrbitControls if available, with robust fallback handler directly on renderer.domElement
+          if (typeof THREE.OrbitControls !== "undefined") {
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.06;
+            this.controls.maxPolarAngle = Math.PI * 0.485;
+            this.controls.minDistance = 10;
+            this.controls.maxDistance = 145;
+            this.controls.target.set(0, 0, -4);
+          } else {
+            this.controls = this.createRobust3DControls(this.camera, this.renderer.domElement);
+          }
+
+          const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7cb342, 0.85);
+          hemiLight.position.set(0, 70, 0);
+          this.scene.add(hemiLight);
+
+          this.dirLight = new THREE.DirectionalLight(0xfff8e1, 1.08);
+          this.dirLight.position.set(48, 80, 44);
+          this.dirLight.castShadow = true;
+          this.dirLight.shadow.mapSize.width = 1024;
+          this.dirLight.shadow.mapSize.height = 1024;
+          this.dirLight.shadow.camera.near = 10;
+          this.dirLight.shadow.camera.far = 210;
+          const d = 66;
+          this.dirLight.shadow.camera.left = -d;
+          this.dirLight.shadow.camera.right = d;
+          this.dirLight.shadow.camera.top = d;
+          this.dirLight.shadow.camera.bottom = -d;
+          this.dirLight.shadow.bias = -0.0005;
+          this.scene.add(this.dirLight);
+
+          PVZ_THEME_DATA.islands.forEach((isl, idx) => {
+            this.createFloatingIsland(isl, idx);
+          });
+
+          this.createClouds();
+          this.createSunBeamsAndParticles();
+
+          NPCSystem.init();
+          Builder.init();
+
+          if (this.controls.update) this.controls.update();
+          this.renderer.render(this.scene, this.camera);
+          window.addEventListener("resize", () => this.onResize());
+          window.addEventListener("keydown", (e) => { this.keysPressed[e.code] = true; });
+          window.addEventListener("keyup", (e) => { this.keysPressed[e.code] = false; });
+          this.setupPointerEvents();
+        } catch (err) {
+          console.error("WebGL 初始化失敗:", err);
+          container.innerHTML = `<div class="flex items-center justify-center h-full p-6 text-center">
+            <div class="pvz-panel rounded-3xl p-6 max-w-md">
+              <div class="text-4xl mb-2">⚠️</div>
+              <h2 class="font-black text-lg text-rose-800 mb-2">WebGL 3D 渲染初始化異常</h2>
+              <p class="text-xs text-slate-700">${err.message || "請確認瀏覽器已開啟硬體加速與 WebGL 支援。"}</p>
+            </div>
+          </div>`;
+        }
+      },
+
+      createRobust3DControls(camera, domElement) {
+        const target = new THREE.Vector3(0, 0, -4);
+        const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target));
+        const targetSpherical = spherical.clone();
+        const desiredTarget = target.clone();
+
+        let dragMode = "none";
+        let prevX = 0, prevY = 0;
+        let lastPinchDist = 0;
+        let lastTouchMid = null;
+
+        domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+
+        domElement.addEventListener("pointerdown", (e) => {
+          Engine.camAnim.active = false;
+          dragMode = (e.button === 2 || e.shiftKey) ? "pan" : "rotate";
+          prevX = e.clientX;
+          prevY = e.clientY;
+        });
+
+        window.addEventListener("pointerup", () => {
+          dragMode = "none";
+        });
+
+        domElement.addEventListener("pointermove", (e) => {
+          if (dragMode === "none") return;
+          const dx = e.clientX - prevX;
+          const dy = e.clientY - prevY;
+          prevX = e.clientX;
+          prevY = e.clientY;
+
+          if (dragMode === "rotate") {
+            targetSpherical.theta -= dx * 0.0068;
+            const minPhi = Engine.cameraMode === "fpv" ? 0.85 : 0.18;
+            const maxPhi = Engine.cameraMode === "fpv" ? 1.72 : Math.PI * 0.485;
+            targetSpherical.phi = Math.max(minPhi, Math.min(maxPhi, targetSpherical.phi - dy * 0.0068));
+          } else if (dragMode === "pan") {
+            const panScale = targetSpherical.radius * 0.0014;
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            forward.y = 0;
+            forward.normalize();
+            const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+            desiredTarget.addScaledVector(right, -dx * panScale);
+            desiredTarget.addScaledVector(forward, dy * panScale);
+          }
+        });
+
+        domElement.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          Engine.camAnim.active = false;
+          const minR = Engine.cameraMode === "fpv" ? 2.5 : 10;
+          targetSpherical.radius = Math.max(minR, Math.min(145, targetSpherical.radius + e.deltaY * 0.05));
+        }, { passive: false });
+
+        domElement.addEventListener("touchstart", (e) => {
+          if (e.touches.length === 2) {
+            dragMode = "none";
+            lastPinchDist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            );
+            lastTouchMid = {
+              x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
+              y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5
+            };
+          }
+        }, { passive: true });
+
+        domElement.addEventListener("touchmove", (e) => {
+          if (e.touches.length === 2) {
+            Engine.camAnim.active = false;
+            const dist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            );
+            const mid = {
+              x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
+              y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5
+            };
+            if (lastPinchDist > 0) {
+              targetSpherical.radius = Math.max(10, Math.min(145, targetSpherical.radius - (dist - lastPinchDist) * 0.16));
+            }
+            if (lastTouchMid) {
+              const panScale = targetSpherical.radius * 0.0016;
+              const forward = new THREE.Vector3();
+              camera.getWorldDirection(forward);
+              forward.y = 0;
+              forward.normalize();
+              const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+              desiredTarget.addScaledVector(right, -(mid.x - lastTouchMid.x) * panScale);
+              desiredTarget.addScaledVector(forward, (mid.y - lastTouchMid.y) * panScale);
+            }
+            lastPinchDist = dist;
+            lastTouchMid = mid;
+          }
+        }, { passive: true });
+
+        domElement.addEventListener("touchend", () => {
+          lastPinchDist = 0;
+          lastTouchMid = null;
+        });
+
+        return {
+          target,
+          desiredTarget,
+          syncFromCamera() {
+            desiredTarget.copy(target);
+            const offset = camera.position.clone().sub(target);
+            if (offset.lengthSq() > 0.001) {
+              spherical.setFromVector3(offset);
+              targetSpherical.copy(spherical);
+            }
+          },
+          update(dt = 0.016) {
+            const keys = Engine.keysPressed;
+            const moveSpeed = (Engine.cameraMode === "fpv" ? 16 : 28) * dt;
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            forward.y = 0;
+            if (forward.lengthSq() > 0.0001) forward.normalize();
+            const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+            let moved = false;
+            if (keys["KeyW"] || keys["ArrowUp"]) { desiredTarget.addScaledVector(forward, moveSpeed); moved = true; }
+            if (keys["KeyS"] || keys["ArrowDown"]) { desiredTarget.addScaledVector(forward, -moveSpeed); moved = true; }
+            if (keys["KeyA"] || keys["ArrowLeft"]) { desiredTarget.addScaledVector(right, -moveSpeed); moved = true; }
+            if (keys["KeyD"] || keys["ArrowRight"]) { desiredTarget.addScaledVector(right, moveSpeed); moved = true; }
+            if (moved) Engine.camAnim.active = false;
+
+            desiredTarget.x = Math.max(-55, Math.min(55, desiredTarget.x));
+            desiredTarget.z = Math.max(-50, Math.min(50, desiredTarget.z));
+
+            if (!Engine.camAnim.active) {
+              target.lerp(desiredTarget, 0.16);
+              spherical.theta += (targetSpherical.theta - spherical.theta) * 0.16;
+              spherical.phi += (targetSpherical.phi - spherical.phi) * 0.16;
+              spherical.radius += (targetSpherical.radius - spherical.radius) * 0.16;
+
+              const offset = new THREE.Vector3().setFromSpherical(spherical);
+              camera.position.copy(target).add(offset);
+              camera.lookAt(target);
+            } else {
+              camera.lookAt(target);
+            }
+          }
+        };
+      },
+
+      setCameraPreset(mode) {
+        this.cameraMode = mode;
+        Tour.stop(true);
+
+        document.querySelectorAll(".cam-preset-btn").forEach(btn => {
+          btn.classList.remove("bg-sky-500", "text-white");
+          btn.classList.add("bg-white", "text-sky-950", "border", "border-sky-200");
+        });
+        const activeBtn = document.getElementById(`cam-btn-${mode}`);
+        if (activeBtn) {
+          activeBtn.classList.remove("bg-white", "text-sky-950", "border", "border-sky-200");
+          activeBtn.classList.add("bg-sky-500", "text-white");
+        }
+
+        const fpvHint = document.getElementById("fpv-hint");
+        if (mode === "fpv") {
+          fpvHint.classList.remove("hidden");
+        } else {
+          fpvHint.classList.add("hidden");
+        }
+
+        const activeIslId = AppState.activeIslandId || "sunflower-greenhouse";
+        const islEntry = this.islandGroups.get(activeIslId) || this.islandGroups.get("popcap-origin");
+        const islPos = islEntry
+          ? new THREE.Vector3(islEntry.data.position.x, islEntry.data.position.y + 1.2, islEntry.data.position.z)
+          : new THREE.Vector3(0, 2, -4);
+
+        if (mode === "overview") {
+          this.focusOnPosition(new THREE.Vector3(0, 0, -4), new THREE.Vector3(0, 48, 86), 1.05);
+          UI.showToast("🔭 切換至：3D 俯瞰全景視角");
+        } else if (mode === "isometric") {
+          this.focusOnPosition(new THREE.Vector3(0, 1, -2), new THREE.Vector3(46, 36, 48), 1.05);
+          UI.showToast("📐 切換至：3D 斜角探索視角 (45° 透視)");
+        } else if (mode === "closeup") {
+          this.focusOnPosition(islPos, new THREE.Vector3(9, 10, 15), 1.0);
+          UI.showToast(`🔍 切換至：${islEntry.data.name} 近距離 3D 特寫`);
+        } else if (mode === "fpv") {
+          const groundFocus = islPos.clone().add(new THREE.Vector3(0, 0.8, 3.8));
+          this.focusOnPosition(groundFocus, new THREE.Vector3(0, 1.8, 4.2), 1.0);
+          UI.showToast("🚶 切換至：第一人稱草坪漫步視角（可用 WASD 或拖曳環顧）");
+        }
+      },
+
+      createSunBeamsAndParticles() {
+        const count = 110;
+        const geo = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          positions[i * 3] = (Math.random() - 0.5) * 115;
+          positions[i * 3 + 1] = Math.random() * 28 + 1;
+          positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+        }
+        geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.PointsMaterial({
+          color: 0xffe082,
+          size: 0.9,
+          transparent: true,
+          opacity: 0.88
+        });
+        this.sunParticles = new THREE.Points(geo, mat);
+        this.scene.add(this.sunParticles);
+
+        const beamMat = new THREE.MeshBasicMaterial({
+          color: 0xfff9c4,
+          transparent: true,
+          opacity: 0.08,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+        [
+          { x: -16, z: -20, rotZ: -0.25 },
+          { x: 14, z: -12, rotZ: -0.22 },
+          { x: 4, z: 16, rotZ: -0.28 }
+        ].forEach((b, idx) => {
+          const beam = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 9.5, 58, 12, 1, true), beamMat);
+          beam.position.set(b.x, 24, b.z);
+          beam.rotation.z = b.rotZ;
+          beam.userData = { phase: idx * 1.4 };
+          this.scene.add(beam);
+          this.sunRays.push(beam);
+        });
+      },
+
+      focusOnPosition(targetVec, offsetVec = new THREE.Vector3(0, 14, 21), duration = 1.05) {
+        this.camAnim.active = true;
+        this.camAnim.startPos.copy(this.camera.position);
+        this.camAnim.endPos.copy(targetVec).add(offsetVec);
+        this.camAnim.startTarget.copy(this.controls.target);
+        this.camAnim.endTarget.copy(targetVec);
+        this.camAnim.progress = 0;
+        this.camAnim.duration = duration;
+      },
+
+      focusOnIsland(islandId) {
+        const entry = this.islandGroups.get(islandId);
+        if (!entry) return;
+        const worldPos = new THREE.Vector3(entry.data.position.x, entry.data.position.y + 1.5, entry.data.position.z);
+        this.focusOnPosition(worldPos, new THREE.Vector3(0, 15, 22), 1.0);
+        UI.openIslandDetail(islandId);
+      },
+
+      resetOverview() {
+        Tour.stop(true);
+        this.setCameraPreset("overview");
+      },
+
+      setQuality(mode) {
+        this.quality = mode;
+        let effective = mode;
+        if (mode === "auto") {
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+          effective = isMobile ? "medium" : "high";
+        }
+        if (effective === "high") {
+          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+          this.renderer.shadowMap.enabled = true;
+        } else if (effective === "medium") {
+          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.4));
+          this.renderer.shadowMap.enabled = true;
+        } else {
+          this.renderer.setPixelRatio(1);
+          this.renderer.shadowMap.enabled = false;
+        }
+      },
+
+      createFloatingIsland(data, index) {
+        const group = new THREE.Group();
+        group.position.set(data.position.x, data.position.y, data.position.z);
+
+        const baseGeo = new THREE.ConeGeometry(data.radius, data.height * 1.45, 9);
+        const posAttr = baseGeo.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+          const y = posAttr.getY(i);
+          if (y < data.height * 0.5) {
+            posAttr.setX(i, posAttr.getX(i) + Math.sin(i * 3.1 + index) * 0.45);
+            posAttr.setZ(i, posAttr.getZ(i) + Math.cos(i * 2.7 + index) * 0.45);
+          }
+        }
+        baseGeo.computeVertexNormals();
+
+        const baseMat = new THREE.MeshStandardMaterial({
+          color: data.cliffColor,
+          roughness: 0.88,
+          flatShading: true
+        });
+        const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+        baseMesh.rotation.x = Math.PI;
+        baseMesh.position.y = -data.height * 0.72;
+        baseMesh.receiveShadow = true;
+        group.add(baseMesh);
+
+        const topGeo = new THREE.CylinderGeometry(data.radius * 0.96, data.radius * 1.02, 1.2, 12);
+        const topMat = new THREE.MeshStandardMaterial({
+          color: data.topColor,
+          roughness: 0.75,
+          flatShading: true
+        });
+        const topMesh = new THREE.Mesh(topGeo, topMat);
+        topMesh.position.y = 0;
+        topMesh.receiveShadow = true;
+        topMesh.castShadow = true;
+        topMesh.userData = { type: "islandTop", islandId: data.id };
+        group.add(topMesh);
+        this.islandTopMeshes.push(topMesh);
+
+        const gridGroup = new THREE.Group();
+        gridGroup.position.y = 0.62;
+        const tileGeo = new THREE.BoxGeometry(2.1, 0.06, 2.1);
+        for (let gx = -2; gx <= 2; gx++) {
+          for (let gz = -2; gz <= 2; gz++) {
+            if (Math.hypot(gx * 2.2, gz * 2.2) < data.radius * 0.66) {
+              const isAlt = (gx + gz) % 2 === 0;
+              const tileMat = new THREE.MeshStandardMaterial({
+                color: data.id === "roof-flowerpot" ? (isAlt ? 0xd84315 : 0xbf360c) : (isAlt ? 0x8bc34a : 0x7cb342),
+                roughness: 0.8
+              });
+              const tile = new THREE.Mesh(tileGeo, tileMat);
+              tile.position.set(gx * 2.15, 0, gz * 2.15);
+              tile.receiveShadow = true;
+              gridGroup.add(tile);
+            }
+          }
+        }
+        group.add(gridGroup);
+
+        if (data.id === "pool-fog-backyard") {
+          const waterGeo = new THREE.BoxGeometry(data.radius * 1.45, 0.14, 3.6);
+          const waterMat = new THREE.MeshStandardMaterial({
+            color: 0x29b6f6,
+            roughness: 0.2,
+            metalness: 0.1,
+            transparent: true,
+            opacity: 0.88
+          });
+          const water = new THREE.Mesh(waterGeo, waterMat);
+          water.position.set(0, 0.65, 0);
+          group.add(water);
+
+          [-3.5, 0, 3.5].forEach((lx, li) => {
+            const pad = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.95, 0.9, 0.12, 10),
+              new THREE.MeshStandardMaterial({ color: 0x43a047, flatShading: true })
+            );
+            pad.position.set(lx, 0.74, li % 2 === 0 ? -0.7 : 0.7);
+            group.add(pad);
+          });
+        }
+
+        const landmark = this.buildLandmark(data);
+        landmark.position.y = 0.6;
+        landmark.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.userData = { type: "landmark", islandId: data.id };
+            this.interactiveTargets.push(child);
+          }
+        });
+        group.add(landmark);
+
+        this.decorateIslandPerimeter(group, data, index);
+
+        const signSprite = this.createIslandLabelSprite(data);
+        signSprite.position.set(0, 6.8, 0);
+        signSprite.userData = { type: "landmark", islandId: data.id };
+        group.add(signSprite);
+        this.interactiveTargets.push(signSprite);
+
+        this.scene.add(group);
+        this.islandGroups.set(data.id, {
+          group,
+          topMesh,
+          data,
+          baseY: data.position.y,
+          phase: index * 0.85,
+          obstacles: [{ x: 0, z: 0, r: 2.9 }]
+        });
+      },
+
+      buildLandmark(data) {
+        const g = new THREE.Group();
+        const matRed = new THREE.MeshStandardMaterial({ color: 0xe53935, flatShading: true });
+        const matCream = new THREE.MeshStandardMaterial({ color: 0xfff8e1, flatShading: true });
+        const matBrown = new THREE.MeshStandardMaterial({ color: 0x6d4c41, flatShading: true });
+        const matGreen = new THREE.MeshStandardMaterial({ color: 0x43a047, flatShading: true });
+        const matYellow = new THREE.MeshStandardMaterial({ color: 0xffca28, flatShading: true });
+        const matGlass = new THREE.MeshStandardMaterial({ color: 0xb3e5fc, transparent: true, opacity: 0.65, roughness: 0.1 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x546e7a, metalness: 0.4, roughness: 0.4, flatShading: true });
+
+        switch (data.landmarkType) {
+          case "lawnHouse": {
+            const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 3.6), matCream);
+            body.position.y = 1.4;
+            g.add(body);
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(3.4, 2.1, 4), matRed);
+            roof.position.y = 3.8;
+            roof.rotation.y = Math.PI / 4;
+            g.add(roof);
+            const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.2), matBrown);
+            door.position.set(0, 0.75, 1.82);
+            g.add(door);
+            break;
+          }
+          case "greenhouse": {
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 3.6), matGlass);
+            frame.position.y = 1.4;
+            g.add(frame);
+            const roof = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 3.7, 6), matGlass);
+            roof.rotation.z = Math.PI / 2;
+            roof.rotation.y = Math.PI / 2;
+            roof.position.y = 2.8;
+            g.add(roof);
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 3.5, 7), matGreen);
+            stem.position.set(0, 1.8, 0);
+            g.add(stem);
+            const head = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.35, 12), matBrown);
+            head.rotation.x = Math.PI / 2;
+            head.position.set(0, 3.5, 0.2);
+            g.add(head);
+            for (let p = 0; p < 10; p++) {
+              const ang = (p / 10) * Math.PI * 2;
+              const petal = new THREE.Mesh(new THREE.SphereGeometry(0.45, 6, 6), matYellow);
+              petal.position.set(Math.cos(ang) * 1.25, 3.5 + Math.sin(ang) * 1.25, 0.15);
+              g.add(petal);
+            }
+            break;
+          }
+          case "peaFort": {
+            const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.4, 3.0, 8), matGreen);
+            tower.position.y = 1.5;
+            g.add(tower);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(1.25, 10, 10), new THREE.MeshStandardMaterial({ color: 0x66bb6a }));
+            head.position.set(0, 3.7, 0);
+            g.add(head);
+            const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.35, 1.4, 10), new THREE.MeshStandardMaterial({ color: 0x4caf50 }));
+            snout.rotation.x = Math.PI / 2;
+            snout.position.set(0, 3.7, 1.25);
+            g.add(snout);
+            break;
+          }
+          case "wallnutWall": {
+            const nut = new THREE.Mesh(new THREE.SphereGeometry(2.1, 12, 12), new THREE.MeshStandardMaterial({ color: 0xc68642, flatShading: true }));
+            nut.scale.set(1.0, 1.32, 0.9);
+            nut.position.y = 2.4;
+            g.add(nut);
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const pupilMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            [-0.55, 0.55].forEach(ex => {
+              const eye = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), eyeMat);
+              eye.position.set(ex, 2.8, 1.75);
+              g.add(eye);
+              const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), pupilMat);
+              pupil.position.set(ex, 2.8, 2.05);
+              g.add(pupil);
+            });
+            break;
+          }
+          case "daveVan": {
+            const vanBody = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.1, 2.4), new THREE.MeshStandardMaterial({ color: 0xff7043, flatShading: true }));
+            vanBody.position.y = 1.3;
+            g.add(vanBody);
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 2.3), matCream);
+            cabin.position.set(1.5, 1.1, 0);
+            g.add(cabin);
+            const pan = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.95, 0.6, 12), matMetal);
+            pan.position.set(-0.5, 2.7, 0);
+            g.add(pan);
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.22, 0.3), matMetal);
+            handle.position.set(-1.9, 2.75, 0);
+            g.add(handle);
+            break;
+          }
+          case "poolGarden": {
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.6, 3.2, 8), matBrown);
+            base.position.set(0, 1.6, -2.5);
+            g.add(base);
+            const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.3, 8), matYellow);
+            lantern.position.set(0, 3.6, -2.5);
+            g.add(lantern);
+            const hat = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.1, 8), matGreen);
+            hat.position.set(0, 4.7, -2.5);
+            g.add(hat);
+            break;
+          }
+          case "roofTiles": {
+            const roofBlock = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.8, 4.0), matRed);
+            roofBlock.position.y = 0.9;
+            g.add(roofBlock);
+            const pot = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.05, 1.6, 10), new THREE.MeshStandardMaterial({ color: 0xd97742, flatShading: true }));
+            pot.position.y = 2.5;
+            g.add(pot);
+            const melon = new THREE.Mesh(new THREE.SphereGeometry(1.15, 10, 10), matGreen);
+            melon.position.y = 3.8;
+            g.add(melon);
+            break;
+          }
+          case "zombossLab": {
+            const labBase = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.9, 2.6, 8), matMetal);
+            labBase.position.y = 1.3;
+            g.add(labBase);
+            const dome = new THREE.Mesh(new THREE.SphereGeometry(2.1, 10, 10), new THREE.MeshStandardMaterial({ color: 0x7e57c2, flatShading: true }));
+            dome.position.y = 3.2;
+            g.add(dome);
+            const visor = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.55, 0.6), new THREE.MeshStandardMaterial({ color: 0xff1744, emissive: 0x880000 }));
+            visor.position.set(0, 3.3, 1.9);
+            g.add(visor);
+            break;
+          }
+        }
+        return g;
+      },
+
+      decorateIslandPerimeter(group, data, seed) {
+        const treeCount = 5;
+        for (let i = 0; i < treeCount; i++) {
+          const angle = (i / treeCount) * Math.PI * 2 + seed * 0.4;
+          const dist = data.radius * 0.76;
+          const x = Math.cos(angle) * dist;
+          const z = Math.sin(angle) * dist;
+
+          if (i % 2 === 0) {
+            const tree = new THREE.Group();
+            const trunk = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.22, 0.32, 1.3, 6),
+              new THREE.MeshStandardMaterial({ color: 0x6d4c41, flatShading: true })
+            );
+            trunk.position.y = 0.65;
+            tree.add(trunk);
+
+            const crown = new THREE.Mesh(
+              new THREE.DodecahedronGeometry(1.05, 0),
+              new THREE.MeshStandardMaterial({ color: i === 0 ? 0x43a047 : 0x66bb6a, flatShading: true })
+            );
+            crown.position.y = 1.75;
+            crown.castShadow = true;
+            tree.add(crown);
+
+            tree.position.set(x, 0.6, z);
+            group.add(tree);
+          } else {
+            const rock = new THREE.Mesh(
+              new THREE.DodecahedronGeometry(0.65, 0),
+              new THREE.MeshStandardMaterial({ color: 0x90a4ae, flatShading: true })
+            );
+            rock.position.set(x, 0.85, z);
+            group.add(rock);
+
+            const flower = new THREE.Mesh(
+              new THREE.SphereGeometry(0.32, 6, 6),
+              new THREE.MeshStandardMaterial({ color: i === 1 ? 0xffca28 : 0xff7043 })
+            );
+            flower.position.set(x + 0.6, 0.78, z + 0.3);
+            group.add(flower);
+          }
+        }
+      },
+
+      createIslandLabelSprite(data) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext("2d");
+
+        ctx.fillStyle = "rgba(255, 253, 245, 0.94)";
+        ctx.beginPath();
+        ctx.roundRect(16, 18, 480, 92, 46);
+        ctx.fill();
+
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = data.themeColor;
+        ctx.stroke();
+
+        ctx.fillStyle = "#1b4332";
+        ctx.font = "900 34px 'Noto Sans TC', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${data.icon} ${data.name}`, 256, 66);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(9.2, 2.3, 1);
+        return sprite;
+      },
+
+      createClouds() {
+        const cloudMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.95,
+          flatShading: true
+        });
+        for (let i = 0; i < 16; i++) {
+          const cloud = new THREE.Group();
+          const puffs = 3 + (i % 3);
+          for (let p = 0; p < puffs; p++) {
+            const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(2.2 + (p % 2) * 0.9, 1), cloudMat);
+            puff.position.set((p - 1) * 2.3, (p % 2) * 0.5, (p % 3 - 1) * 0.9);
+            cloud.add(puff);
+          }
+          cloud.position.set(
+            (Math.random() - 0.5) * 145,
+            15 + Math.random() * 18,
+            (Math.random() - 0.5) * 130
+          );
+          cloud.userData = { speed: 0.6 + Math.random() * 0.7 };
+          this.scene.add(cloud);
+          this.clouds.push(cloud);
+        }
+      },
+
+      setupPointerEvents() {
+        const dom = this.renderer.domElement;
+        let downPos = { x: 0, y: 0 };
+        let downTime = 0;
+
+        dom.addEventListener("pointerdown", (e) => {
+          downPos = { x: e.clientX, y: e.clientY };
+          downTime = performance.now();
+        });
+
+        dom.addEventListener("pointermove", (e) => {
+          if (!AppState.builderActive) return;
+          this.updatePointer(e);
+          Builder.onPointerMove(this.raycaster);
+        });
+
+        dom.addEventListener("pointerup", (e) => {
+          const dist = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+          const elapsed = performance.now() - downTime;
+          if (dist < 8 && elapsed < 400) {
+            this.updatePointer(e);
+            this.handleSceneClick();
+          }
+        });
+      },
+
+      updatePointer(e) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+      },
+
+      handleSceneClick() {
+        if (AppState.builderActive) {
+          Builder.onSceneClick(this.raycaster);
+          return;
+        }
+
+        const npcHits = this.raycaster.intersectObjects(NPCSystem.hitMeshes, true);
+        if (npcHits.length > 0) {
+          let obj = npcHits[0].object;
+          while (obj && !obj.userData.npcId) obj = obj.parent;
+          if (obj && obj.userData.npcId) {
+            NPCSystem.interactWithNPC(obj.userData.npcId);
+            return;
+          }
+        }
+
+        const targets = [...this.interactiveTargets, ...this.islandTopMeshes];
+        const hits = this.raycaster.intersectObjects(targets, true);
+        if (hits.length > 0) {
+          let obj = hits[0].object;
+          while (obj && !obj.userData.islandId) obj = obj.parent;
+          if (obj && obj.userData.islandId) {
+            Tour.stop(true);
+            this.focusOnIsland(obj.userData.islandId);
+          }
+        }
+      },
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      },
+
+      animate() {
+        if (!Engine.renderer || !Engine.scene || !Engine.camera) return;
+        requestAnimationFrame(() => Engine.animate());
+        const dt = Math.min(Engine.clock.getDelta(), 0.05);
+        const elapsed = Engine.clock.getElapsedTime();
+
+        Engine.islandGroups.forEach((entry) => {
+          entry.group.position.y = entry.baseY + Math.sin(elapsed * 1.15 + entry.phase) * 0.35;
+        });
+
+        if (Engine.sunParticles) {
+          Engine.sunParticles.rotation.y = elapsed * 0.03;
+        }
+        Engine.sunRays.forEach(ray => {
+          ray.material.opacity = 0.055 + Math.sin(elapsed * 0.9 + ray.userData.phase) * 0.025;
+        });
+
+        if (Engine.camAnim.active) {
+          Engine.camAnim.progress += dt / Engine.camAnim.duration;
+          const t = Math.min(Engine.camAnim.progress, 1);
+          const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          Engine.camera.position.lerpVectors(Engine.camAnim.startPos, Engine.camAnim.endPos, ease);
+          Engine.controls.target.lerpVectors(Engine.camAnim.startTarget, Engine.camAnim.endTarget, ease);
+          if (t >= 1) {
+            Engine.camAnim.active = false;
+            if (Engine.controls.syncFromCamera) Engine.controls.syncFromCamera();
+          }
+        }
+
+        NPCSystem.update(dt, elapsed);
+        Tour.update(dt);
+
+        if (Engine.controls.update) Engine.controls.update(dt);
+        Engine.renderer.render(Engine.scene, Engine.camera);
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 島嶼人物 NPC 系統 (NPCSystem)
+     * ============================================================================
+     */
+    const NPCSystem = {
+      npcs: new Map(),
+      hitMeshes: [],
+
+      init() {
+        PVZ_THEME_DATA.islands.forEach((isl) => {
+          isl.npcs.forEach((npcData, idx) => {
+            this.spawnNPC(npcData, isl, idx);
+          });
+        });
+      },
+
+      spawnNPC(npcData, islandData, idx) {
+        const mesh = this.createCartoonCharacterMesh(npcData);
+        const angle = idx * 2.1 + 0.6;
+        const dist = islandData.radius * 0.52;
+        const localX = Math.cos(angle) * dist;
+        const localZ = Math.sin(angle) * dist;
+
+        const islEntry = Engine.islandGroups.get(islandData.id);
+        mesh.position.set(
+          islandData.position.x + localX,
+          islEntry.group.position.y + 0.62,
+          islandData.position.z + localZ
+        );
+        mesh.userData = { npcId: npcData.id };
+        Engine.scene.add(mesh);
+        this.hitMeshes.push(mesh);
+
+        const state = {
+          data: npcData,
+          mesh,
+          currentIslandId: islandData.id,
+          localPos: new THREE.Vector2(localX, localZ),
+          targetLocalPos: new THREE.Vector2(localX, localZ),
+          mode: "idle",
+          timer: 1 + Math.random() * 2,
+          bridgePath: null,
+          leftArm: mesh.userData.leftArm,
+          rightArm: mesh.userData.rightArm,
+          leftLeg: mesh.userData.leftLeg,
+          rightLeg: mesh.userData.rightLeg
+        };
+
+        this.pickNewDestination(state);
+        this.npcs.set(npcData.id, state);
+      },
+
+      createCartoonCharacterMesh(npcData) {
+        const g = new THREE.Group();
+        const bodyMat = new THREE.MeshStandardMaterial({ color: npcData.color, flatShading: true });
+        const skinMat = new THREE.MeshStandardMaterial({
+          color: npcData.hat === "tie" || npcData.hat === "cone" ? 0x9ccc65 : 0xffccbc,
+          flatShading: true
+        });
+
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.72, 8), bodyMat);
+        torso.position.y = 0.68;
+        torso.castShadow = true;
+        g.add(torso);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 10, 10), skinMat);
+        head.position.y = 1.28;
+        head.castShadow = true;
+        g.add(head);
+
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+        [-0.12, 0.12].forEach(ex => {
+          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), eyeMat);
+          eye.position.set(ex, 1.32, 0.32);
+          g.add(eye);
+        });
+
+        if (npcData.hat === "pot") {
+          const pot = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.36, 0.32, 0.34, 10),
+            new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.5, roughness: 0.3 })
+          );
+          pot.position.set(0, 1.62, 0);
+          pot.rotation.z = 0.15;
+          g.add(pot);
+        } else if (npcData.hat === "cone") {
+          const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(0.34, 0.65, 8),
+            new THREE.MeshStandardMaterial({ color: 0xff6d00, flatShading: true })
+          );
+          cone.position.set(0, 1.78, 0);
+          g.add(cone);
+        } else if (npcData.hat === "sun" || npcData.hat === "flower") {
+          const petal = new THREE.Mesh(
+            new THREE.TorusGeometry(0.36, 0.11, 6, 10),
+            new THREE.MeshStandardMaterial({ color: 0xffca28 })
+          );
+          petal.rotation.x = Math.PI / 2;
+          petal.position.y = 1.56;
+          g.add(petal);
+        } else if (npcData.hat === "helmet") {
+          const helm = new THREE.Mesh(
+            new THREE.SphereGeometry(0.39, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+            new THREE.MeshStandardMaterial({ color: 0x2e7d32 })
+          );
+          helm.position.y = 1.3;
+          g.add(helm);
+        }
+
+        const armGeo = new THREE.BoxGeometry(0.14, 0.45, 0.14);
+        const leftArm = new THREE.Mesh(armGeo, skinMat);
+        leftArm.position.set(-0.42, 0.72, 0);
+        g.add(leftArm);
+
+        const rightArm = new THREE.Mesh(armGeo, skinMat);
+        rightArm.position.set(0.42, 0.72, 0);
+        g.add(rightArm);
+
+        const legGeo = new THREE.BoxGeometry(0.16, 0.36, 0.16);
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x4e342e });
+        const leftLeg = new THREE.Mesh(legGeo, legMat);
+        leftLeg.position.set(-0.15, 0.18, 0);
+        g.add(leftLeg);
+
+        const rightLeg = new THREE.Mesh(legGeo, legMat);
+        rightLeg.position.set(0.15, 0.18, 0);
+        g.add(rightLeg);
+
+        g.userData.leftArm = leftArm;
+        g.userData.rightArm = rightArm;
+        g.userData.leftLeg = leftLeg;
+        g.userData.rightLeg = rightLeg;
+
+        return g;
+      },
+
+      pickNewDestination(npc) {
+        const islEntry = Engine.islandGroups.get(npc.currentIslandId);
+        if (!islEntry) return;
+
+        const connectedBridges = AppState.bridges.filter(
+          b => b.fromId === npc.currentIslandId || b.toId === npc.currentIslandId
+        );
+        if (connectedBridges.length > 0 && Math.random() < 0.35) {
+          const chosenBridge = connectedBridges[Math.floor(Math.random() * connectedBridges.length)];
+          const destId = chosenBridge.fromId === npc.currentIslandId ? chosenBridge.toId : chosenBridge.fromId;
+          npc.mode = "crossBridge";
+          npc.bridgePath = { fromId: npc.currentIslandId, toId: destId, progress: 0 };
+          return;
+        }
+
+        const maxR = islEntry.data.radius * 0.74;
+        const minR = 3.3;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const ang = Math.random() * Math.PI * 2;
+          const r = minR + Math.random() * (maxR - minR);
+          const tx = Math.cos(ang) * r;
+          const tz = Math.sin(ang) * r;
+          const midX = (npc.localPos.x + tx) * 0.5;
+          const midZ = (npc.localPos.y + tz) * 0.5;
+          if (Math.hypot(midX, midZ) > 2.7) {
+            npc.targetLocalPos.set(tx, tz);
+            npc.mode = "walk";
+            return;
+          }
+        }
+        npc.mode = "idle";
+        npc.timer = 2;
+      },
+
+      update(dt, elapsed) {
+        this.npcs.forEach((npc) => {
+          const islEntry = Engine.islandGroups.get(npc.currentIslandId);
+          if (!islEntry) return;
+
+          if (npc.mode === "crossBridge" && npc.bridgePath) {
+            const fromIsl = Engine.islandGroups.get(npc.bridgePath.fromId);
+            const toIsl = Engine.islandGroups.get(npc.bridgePath.toId);
+            const stillExists = AppState.bridges.some(
+              b => (b.fromId === npc.bridgePath.fromId && b.toId === npc.bridgePath.toId) ||
+                   (b.toId === npc.bridgePath.fromId && b.fromId === npc.bridgePath.toId)
+            );
+            if (!fromIsl || !toIsl || !stillExists) {
+              npc.mode = "idle";
+              npc.bridgePath = null;
+              return;
+            }
+
+            const p1 = new THREE.Vector3(fromIsl.group.position.x, fromIsl.group.position.y + 0.65, fromIsl.group.position.z);
+            const p2 = new THREE.Vector3(toIsl.group.position.x, toIsl.group.position.y + 0.65, toIsl.group.position.z);
+            const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+            const startEdge = p1.clone().addScaledVector(dir, fromIsl.data.radius * 0.85);
+            const endEdge = p2.clone().addScaledVector(dir, -toIsl.data.radius * 0.85);
+
+            npc.bridgePath.progress += dt * 0.28;
+            const t = Math.min(npc.bridgePath.progress, 1);
+            npc.mesh.position.lerpVectors(startEdge, endEdge, t);
+            npc.mesh.lookAt(endEdge.x, npc.mesh.position.y, endEdge.z);
+
+            npc.leftLeg.rotation.x = Math.sin(elapsed * 10) * 0.55;
+            npc.rightLeg.rotation.x = -Math.sin(elapsed * 10) * 0.55;
+            npc.leftArm.rotation.x = -Math.sin(elapsed * 10) * 0.45;
+            npc.rightArm.rotation.x = Math.sin(elapsed * 10) * 0.45;
+
+            if (t >= 1) {
+              npc.currentIslandId = npc.bridgePath.toId;
+              const relX = npc.mesh.position.x - toIsl.group.position.x;
+              const relZ = npc.mesh.position.z - toIsl.group.position.z;
+              npc.localPos.set(relX, relZ);
+              npc.bridgePath = null;
+              npc.mode = "idle";
+              npc.timer = 1.5;
+            }
+            return;
+          }
+
+          if (npc.mode === "idle" || npc.mode === "wave") {
+            npc.timer -= dt;
+            npc.leftLeg.rotation.x = 0;
+            npc.rightLeg.rotation.x = 0;
+            if (npc.mode === "wave") {
+              npc.rightArm.rotation.z = -2.4 + Math.sin(elapsed * 10) * 0.35;
+            } else {
+              npc.rightArm.rotation.z = 0;
+            }
+            npc.mesh.position.set(
+              islEntry.group.position.x + npc.localPos.x,
+              islEntry.group.position.y + 0.62,
+              islEntry.group.position.z + npc.localPos.y
+            );
+            if (npc.timer <= 0) {
+              this.pickNewDestination(npc);
+            }
+          } else if (npc.mode === "walk") {
+            const diff = new THREE.Vector2().subVectors(npc.targetLocalPos, npc.localPos);
+            const dist = diff.length();
+            if (dist < 0.25) {
+              npc.mode = Math.random() < 0.45 ? "wave" : "idle";
+              npc.timer = 1.8 + Math.random() * 2.2;
+            } else {
+              diff.normalize();
+              const speed = 2.1;
+              npc.localPos.addScaledVector(diff, speed * dt);
+              const wx = islEntry.group.position.x + npc.localPos.x;
+              const wy = islEntry.group.position.y + 0.62;
+              const wz = islEntry.group.position.z + npc.localPos.y;
+              npc.mesh.position.set(wx, wy, wz);
+              npc.mesh.lookAt(wx + diff.x, wy, wz + diff.y);
+
+              npc.rightArm.rotation.z = 0;
+              npc.leftLeg.rotation.x = Math.sin(elapsed * 9) * 0.5;
+              npc.rightLeg.rotation.x = -Math.sin(elapsed * 9) * 0.5;
+              npc.leftArm.rotation.x = -Math.sin(elapsed * 9) * 0.4;
+              npc.rightArm.rotation.x = Math.sin(elapsed * 9) * 0.4;
+            }
+          }
+        });
+      },
+
+      interactWithNPC(npcId) {
+        const npc = this.npcs.get(npcId);
+        if (!npc) return;
+        Tour.stop(true);
+        npc.mode = "wave";
+        npc.timer = 5.0;
+        Engine.focusOnPosition(npc.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), new THREE.Vector3(0, 5.5, 9.5), 0.9);
+        UI.openNPCDialogue(npc);
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 島嶼創意建造工坊與跨島橋梁系統 (Builder)
+     * ============================================================================
+     */
+    const Builder = {
+      previewMesh: null,
+      previewRotation: 0,
+      placedMeshes: new Map(),
+      bridgeMeshes: new Map(),
+
+      init() {
+        this.renderPalette();
+        this.rebuildAllFromState();
+      },
+
+      renderPalette() {
+        const container = document.getElementById("builder-palette");
+        container.innerHTML = PVZ_THEME_DATA.buildableCatalog.map(item => `
+          <button onclick="Builder.selectCatalogItem('${item.id}')" id="cat-btn-${item.id}"
+            class="cat-item-btn flex flex-col items-center justify-center p-1.5 rounded-2xl border-2 border-amber-200 bg-white hover:bg-amber-50 transition text-center">
+            <span class="text-lg sm:text-xl leading-none mb-1">${item.icon}</span>
+            <span class="text-[10px] sm:text-[11px] font-bold text-slate-800 truncate w-full">${item.name}</span>
+          </button>
+        `).join("");
+        this.highlightActiveTool();
+      },
+
+      toggleMode() {
+        AppState.builderActive = !AppState.builderActive;
+        const panel = document.getElementById("builder-panel");
+        const btn = document.getElementById("btn-toggle-builder");
+
+        if (AppState.builderActive) {
+          Tour.stop(true);
+          UI.closeRightDrawer();
+          panel.classList.remove("hidden");
+          btn.classList.replace("bg-orange-500", "bg-emerald-600");
+          this.selectCatalogItem(AppState.selectedTool === "bridge" || AppState.selectedTool === "select" ? "house" : AppState.selectedTool);
+          UI.showToast("已開啟創意建造工坊！點擊島嶼放置物件");
+        } else {
+          panel.classList.add("hidden");
+          btn.classList.replace("bg-emerald-600", "bg-orange-500");
+          this.removePreview();
+          AppState.bridgeFirstIslandId = null;
+          AppState.selectedObjectUuid = null;
+        }
+      },
+
+      selectCatalogItem(itemId) {
+        AppState.selectedTool = itemId;
+        AppState.bridgeFirstIslandId = null;
+        AppState.selectedObjectUuid = null;
+        this.highlightActiveTool();
+        this.createPreview(itemId);
+        const item = PVZ_THEME_DATA.buildableCatalog.find(c => c.id === itemId);
+        document.getElementById("builder-hint").textContent = `放置模式：【${item ? item.name : itemId}】— 移動滑鼠預覽，點擊島嶼地面放置`;
+      },
+
+      activateSelectTool() {
+        AppState.selectedTool = "select";
+        AppState.bridgeFirstIslandId = null;
+        this.removePreview();
+        this.highlightActiveTool();
+        document.getElementById("builder-hint").textContent = "選取模式：點擊自建物件或橋梁進行選取，接著可按「旋轉」或「刪除」";
+      },
+
+      activateBridgeTool() {
+        AppState.selectedTool = "bridge";
+        AppState.bridgeFirstIslandId = null;
+        AppState.selectedObjectUuid = null;
+        this.removePreview();
+        this.highlightActiveTool();
+        document.getElementById("builder-hint").textContent = "跨島橋梁工具：請先點擊第一座要連接的浮空島！";
+        UI.showToast("請依序點擊兩座相鄰的島嶼來架設橋梁");
+      },
+
+      highlightActiveTool() {
+        document.querySelectorAll(".cat-item-btn").forEach(btn => {
+          btn.classList.remove("border-orange-500", "bg-orange-100", "ring-2", "ring-orange-400");
+          btn.classList.add("border-amber-200", "bg-white");
+        });
+        const activeBtn = document.getElementById(`cat-btn-${AppState.selectedTool}`);
+        if (activeBtn) {
+          activeBtn.classList.remove("border-amber-200", "bg-white");
+          activeBtn.classList.add("border-orange-500", "bg-orange-100", "ring-2", "ring-orange-400");
+        }
+      },
+
+      createBuildableMesh(type, isGhost = false) {
+        const g = new THREE.Group();
+        const makeMat = (hex) => new THREE.MeshStandardMaterial({
+          color: hex,
+          flatShading: true,
+          transparent: isGhost,
+          opacity: isGhost ? 0.55 : 1.0
+        });
+
+        switch (type) {
+          case "house": {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.3, 1.6), makeMat(0xfff8e1));
+            b.position.y = 0.65;
+            const r = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.0, 4), makeMat(0xe53935));
+            r.position.y = 1.8;
+            r.rotation.y = Math.PI / 4;
+            g.add(b, r);
+            break;
+          }
+          case "tree": {
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 1.2, 6), makeMat(0x6d4c41));
+            trunk.position.y = 0.6;
+            const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85, 0), makeMat(0xffca28));
+            crown.position.y = 1.5;
+            g.add(trunk, crown);
+            break;
+          }
+          case "flowerbed": {
+            const box = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.3, 1.1), makeMat(0x8d6e63));
+            box.position.y = 0.15;
+            g.add(box);
+            [-0.45, 0, 0.45].forEach((fx, i) => {
+              const fl = new THREE.Mesh(new THREE.SphereGeometry(0.24, 6, 6), makeMat(i === 1 ? 0xffca28 : 0xec407a));
+              fl.position.set(fx, 0.42, 0);
+              g.add(fl);
+            });
+            break;
+          }
+          case "lamp": {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 2.1, 6), makeMat(0x37474f));
+            pole.position.y = 1.05;
+            const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), makeMat(0xffe082));
+            bulb.position.y = 2.15;
+            g.add(pole, bulb);
+            break;
+          }
+          case "bench": {
+            const seat = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 0.65), makeMat(0xa1887f));
+            seat.position.y = 0.45;
+            const back = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.55, 0.12), makeMat(0x8d6e63));
+            back.position.set(0, 0.75, -0.26);
+            g.add(seat, back);
+            break;
+          }
+          case "balloon": {
+            const str = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 4), makeMat(0xffffff));
+            str.position.y = 0.9;
+            const bal = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 10), makeMat(0xff7043));
+            bal.scale.set(1, 1.2, 1);
+            bal.position.y = 2.1;
+            g.add(str, bal);
+            break;
+          }
+          case "flag": {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.3, 6), makeMat(0xbdbdbd));
+            pole.position.y = 1.15;
+            const flag = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.55, 0.08), makeMat(0x43a047));
+            flag.position.set(0.48, 1.95, 0);
+            g.add(pole, flag);
+            break;
+          }
+          case "woodbridge":
+          case "stonebridge": {
+            const col = type === "woodbridge" ? 0xa1887f : 0x90a4ae;
+            const deck = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.25, 2.4), makeMat(col));
+            deck.position.y = 0.25;
+            const railL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 2.4), makeMat(col));
+            railL.position.set(-0.62, 0.55, 0);
+            const railR = railL.clone();
+            railR.position.x = 0.62;
+            g.add(deck, railL, railR);
+            break;
+          }
+          case "road": {
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.12, 1.5), makeMat(0xbdbdbd));
+            slab.position.y = 0.06;
+            g.add(slab);
+            break;
+          }
+          case "stall": {
+            const counter = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 1.1), makeMat(0x8d6e63));
+            counter.position.y = 0.4;
+            const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.45, 0.75, 4), makeMat(0xab47bc));
+            canopy.position.y = 1.75;
+            canopy.rotation.y = Math.PI / 4;
+            g.add(counter, canopy);
+            break;
+          }
+          case "peaturret":
+          default: {
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, 0.6, 8), makeMat(0x2e7d32));
+            base.position.y = 0.3;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), makeMat(0x66bb6a));
+            head.position.y = 0.95;
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.65, 8), makeMat(0x43a047));
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.95, 0.55);
+            g.add(base, head, barrel);
+            break;
+          }
+        }
+
+        if (!isGhost) {
+          g.traverse(c => {
+            if (c.isMesh) {
+              c.castShadow = true;
+              c.receiveShadow = true;
+            }
+          });
+        }
+        return g;
+      },
+
+      createPreview(type) {
+        this.removePreview();
+        this.previewMesh = this.createBuildableMesh(type, true);
+        this.previewMesh.rotation.y = this.previewRotation;
+        this.previewMesh.visible = false;
+        Engine.scene.add(this.previewMesh);
+      },
+
+      removePreview() {
+        if (this.previewMesh) {
+          Engine.scene.remove(this.previewMesh);
+          this.previewMesh = null;
+        }
+      },
+
+      onPointerMove(raycaster) {
+        if (!this.previewMesh) return;
+        const hits = raycaster.intersectObjects(Engine.islandTopMeshes, false);
+        if (hits.length > 0) {
+          const hit = hits[0];
+          const islId = hit.object.userData.islandId;
+          const islEntry = Engine.islandGroups.get(islId);
+          const localX = hit.point.x - islEntry.group.position.x;
+          const localZ = hit.point.z - islEntry.group.position.z;
+          const distFromCenter = Math.hypot(localX, localZ);
+
+          const valid = distFromCenter > 2.9 && distFromCenter < islEntry.data.radius * 0.86;
+          this.previewMesh.visible = true;
+          this.previewMesh.position.set(hit.point.x, islEntry.group.position.y + 0.62, hit.point.z);
+          this.previewMesh.traverse(c => {
+            if (c.isMesh) c.material.color.setHex(valid ? 0x69f0ae : 0xff5252);
+          });
+        } else {
+          this.previewMesh.visible = false;
+        }
+      },
+
+      onSceneClick(raycaster) {
+        if (AppState.selectedTool === "bridge") {
+          const hits = raycaster.intersectObjects([...Engine.islandTopMeshes, ...Engine.interactiveTargets], true);
+          if (hits.length === 0) return;
+          let obj = hits[0].object;
+          while (obj && !obj.userData.islandId) obj = obj.parent;
+          if (!obj) return;
+          const clickedId = obj.userData.islandId;
+
+          if (!AppState.bridgeFirstIslandId) {
+            AppState.bridgeFirstIslandId = clickedId;
+            const isl = PVZ_THEME_DATA.islands.find(i => i.id === clickedId);
+            document.getElementById("builder-hint").textContent = `已選起點：【${isl.name}】— 請點擊第二座相鄰島嶼完成連接！`;
+            UI.showToast(`已選擇起點：${isl.name}`);
+          } else {
+            if (AppState.bridgeFirstIslandId === clickedId) {
+              UI.showToast("請選擇另一座不同的島嶼！");
+              return;
+            }
+            this.tryCreateBridge(AppState.bridgeFirstIslandId, clickedId);
+            AppState.bridgeFirstIslandId = null;
+            document.getElementById("builder-hint").textContent = "跨島橋梁工具：點擊第一座島嶼開始新的連接";
+          }
+          return;
+        }
+
+        if (AppState.selectedTool === "select") {
+          const allCustomMeshes = [...this.placedMeshes.values(), ...this.bridgeMeshes.values()];
+          const hits = raycaster.intersectObjects(allCustomMeshes, true);
+          if (hits.length > 0) {
+            let root = hits[0].object;
+            while (root && !root.userData.customId && !root.userData.bridgeId) root = root.parent;
+            if (root) {
+              AppState.selectedObjectUuid = root.userData.customId || root.userData.bridgeId;
+              UI.showToast("已選取自建物件！可點擊上方「旋轉」或「刪除」");
+            }
+          } else {
+            AppState.selectedObjectUuid = null;
+          }
+          return;
+        }
+
+        const hits = raycaster.intersectObjects(Engine.islandTopMeshes, false);
+        if (hits.length === 0) {
+          UI.showToast("請點擊浮空島的草地表面來放置物件！");
+          return;
+        }
+        const hit = hits[0];
+        const islId = hit.object.userData.islandId;
+        const islEntry = Engine.islandGroups.get(islId);
+        const localX = hit.point.x - islEntry.group.position.x;
+        const localZ = hit.point.z - islEntry.group.position.z;
+        const distFromCenter = Math.hypot(localX, localZ);
+
+        if (distFromCenter <= 2.9) {
+          UI.showToast("太靠近中央主題建築了，請往草地空曠處放置！");
+          return;
+        }
+        if (distFromCenter >= islEntry.data.radius * 0.86) {
+          UI.showToast("太靠近島嶼邊緣，無法放置！");
+          return;
+        }
+
+        const overlap = AppState.customObjects.some(
+          o => o.islandId === islId && Math.hypot(o.x - localX, o.z - localZ) < 1.25
+        );
+        if (overlap) {
+          UI.showToast("這裡已經有其他物件了，換個位置試試看！");
+          return;
+        }
+
+        AppState.pushUndo();
+        const newObj = {
+          id: "obj_" + Date.now() + "_" + Math.floor(Math.random() * 999),
+          type: AppState.selectedTool,
+          islandId: islId,
+          x: localX,
+          y: 0.62,
+          z: localZ,
+          rotY: this.previewRotation
+        };
+        AppState.customObjects.push(newObj);
+        AppState.saveBuilder();
+        this.spawnPlacedMesh(newObj);
+        UI.showToast("建造成功！物件已貼合島嶼地面");
+      },
+
+      spawnPlacedMesh(objData) {
+        const islEntry = Engine.islandGroups.get(objData.islandId);
+        if (!islEntry) return;
+        const mesh = this.createBuildableMesh(objData.type, false);
+        mesh.position.set(objData.x, objData.y, objData.z);
+        mesh.rotation.y = objData.rotY || 0;
+        mesh.userData = { customId: objData.id };
+        islEntry.group.add(mesh);
+        this.placedMeshes.set(objData.id, mesh);
+      },
+
+      tryCreateBridge(fromId, toId) {
+        const islA = Engine.islandGroups.get(fromId);
+        const islB = Engine.islandGroups.get(toId);
+        if (!islA || !islB) return;
+
+        const exists = AppState.bridges.some(
+          b => (b.fromId === fromId && b.toId === toId) || (b.fromId === toId && b.toId === fromId)
+        );
+        if (exists) {
+          UI.showToast("這兩座島嶼之間已經有橋梁連接囉！");
+          return;
+        }
+
+        const pA = new THREE.Vector3(islA.data.position.x, islA.data.position.y, islA.data.position.z);
+        const pB = new THREE.Vector3(islB.data.position.x, islB.data.position.y, islB.data.position.z);
+        const centerDist = pA.distanceTo(pB);
+        const gap = centerDist - (islA.data.radius + islB.data.radius);
+        const heightDiff = Math.abs(pA.y - pB.y);
+
+        if (gap > 26) {
+          UI.showToast("兩座島距離太遠了，無法架設安全的橋梁！請選擇較近的鄰島。");
+          return;
+        }
+        if (heightDiff > 6.5) {
+          UI.showToast("兩座島高低落差過大，不適合架設橋梁！");
+          return;
+        }
+
+        AppState.pushUndo();
+        const bridgeData = {
+          id: "br_" + Date.now(),
+          fromId,
+          toId
+        };
+        AppState.bridges.push(bridgeData);
+        AppState.saveBuilder();
+        this.spawnBridgeMesh(bridgeData);
+        UI.showToast(`🌉 橋梁架設完成！角色們現在可以跨島往返了`);
+      },
+
+      spawnBridgeMesh(bridgeData) {
+        const islA = Engine.islandGroups.get(bridgeData.fromId);
+        const islB = Engine.islandGroups.get(bridgeData.toId);
+        if (!islA || !islB) return;
+
+        const pA = new THREE.Vector3(islA.data.position.x, islA.data.position.y + 0.62, islA.data.position.z);
+        const pB = new THREE.Vector3(islB.data.position.x, islB.data.position.y + 0.62, islB.data.position.z);
+        const dir = new THREE.Vector3().subVectors(pB, pA).normalize();
+
+        const startPt = pA.clone().addScaledVector(dir, islA.data.radius * 0.85);
+        const endPt = pB.clone().addScaledVector(dir, -islB.data.radius * 0.85);
+        const bridgeLength = startPt.distanceTo(endPt) + 1.2;
+        const midPt = new THREE.Vector3().addVectors(startPt, endPt).multiplyScalar(0.5);
+
+        const group = new THREE.Group();
+        group.position.copy(midPt);
+        group.lookAt(endPt);
+
+        const deckMat = new THREE.MeshStandardMaterial({ color: 0xa1887f, flatShading: true });
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, flatShading: true });
+        const postMat = new THREE.MeshStandardMaterial({ color: 0xffca28, flatShading: true });
+
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.25, bridgeLength), deckMat);
+        deck.receiveShadow = true;
+        deck.castShadow = true;
+        group.add(deck);
+
+        [-0.95, 0.95].forEach(rx => {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, bridgeLength), railMat);
+          rail.position.set(rx, 0.68, 0);
+          group.add(rail);
+
+          const postCount = Math.max(3, Math.floor(bridgeLength / 3));
+          for (let i = 0; i <= postCount; i++) {
+            const zPos = -bridgeLength / 2 + (i / postCount) * bridgeLength;
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.85, 0.18), postMat);
+            post.position.set(rx, 0.42, zPos);
+            group.add(post);
+          }
+        });
+
+        group.userData = { bridgeId: bridgeData.id };
+        Engine.scene.add(group);
+        this.bridgeMeshes.set(bridgeData.id, group);
+      },
+
+      rotateSelected() {
+        if (AppState.selectedObjectUuid) {
+          const obj = AppState.customObjects.find(o => o.id === AppState.selectedObjectUuid);
+          if (obj) {
+            AppState.pushUndo();
+            obj.rotY = ((obj.rotY || 0) + Math.PI / 4) % (Math.PI * 2);
+            const mesh = this.placedMeshes.get(obj.id);
+            if (mesh) mesh.rotation.y = obj.rotY;
+            AppState.saveBuilder();
+            UI.showToast("已旋轉物件 45 度");
+            return;
+          }
+        }
+        this.previewRotation = (this.previewRotation + Math.PI / 4) % (Math.PI * 2);
+        if (this.previewMesh) this.previewMesh.rotation.y = this.previewRotation;
+        UI.showToast("已旋轉預覽方向");
+      },
+
+      deleteSelected() {
+        if (!AppState.selectedObjectUuid) {
+          UI.showToast("請先切換至「選取/移動」並點擊要刪除的物件或橋梁");
+          return;
+        }
+        const id = AppState.selectedObjectUuid;
+        if (id.startsWith("obj_")) {
+          AppState.pushUndo();
+          AppState.customObjects = AppState.customObjects.filter(o => o.id !== id);
+          AppState.saveBuilder();
+          this.rebuildAllFromState();
+          AppState.selectedObjectUuid = null;
+          UI.showToast("已刪除選取物件");
+        } else if (id.startsWith("br_")) {
+          AppState.pushUndo();
+          AppState.bridges = AppState.bridges.filter(b => b.id !== id);
+          AppState.saveBuilder();
+          this.rebuildAllFromState();
+          AppState.selectedObjectUuid = null;
+          UI.showToast("已拆除橋梁並更新角色巡邏路線");
+        }
+      },
+
+      undo() {
+        if (AppState.undoStack.length === 0) return;
+        AppState.redoStack.push(JSON.stringify({
+          customObjects: AppState.customObjects,
+          bridges: AppState.bridges
+        }));
+        const prev = JSON.parse(AppState.undoStack.pop());
+        AppState.customObjects = prev.customObjects;
+        AppState.bridges = prev.bridges;
+        AppState.saveBuilder();
+        this.rebuildAllFromState();
+        UI.updateHistoryButtons();
+        UI.showToast("已撤銷上一步操作");
+      },
+
+      redo() {
+        if (AppState.redoStack.length === 0) return;
+        AppState.undoStack.push(JSON.stringify({
+          customObjects: AppState.customObjects,
+          bridges: AppState.bridges
+        }));
+        const next = JSON.parse(AppState.redoStack.pop());
+        AppState.customObjects = next.customObjects;
+        AppState.bridges = next.bridges;
+        AppState.saveBuilder();
+        this.rebuildAllFromState();
+        UI.updateHistoryButtons();
+        UI.showToast("已恢復下一步操作");
+      },
+
+      clearCustom() {
+        if (AppState.customObjects.length === 0 && AppState.bridges.length === 0) {
+          UI.showToast("目前沒有自建物件可清空");
+          return;
+        }
+        AppState.pushUndo();
+        AppState.customObjects = [];
+        AppState.bridges = [];
+        AppState.saveBuilder();
+        this.rebuildAllFromState();
+        UI.showToast("已清空所有自建物件與橋梁");
+      },
+
+      resetDefault() {
+        AppState.pushUndo();
+        AppState.customObjects = [];
+        AppState.bridges = [
+          { id: "br_default_1", fromId: "popcap-origin", toId: "sunflower-greenhouse" },
+          { id: "br_default_2", fromId: "sunflower-greenhouse", toId: "peashooter-fort" }
+        ];
+        AppState.saveBuilder();
+        this.rebuildAllFromState();
+        UI.showToast("已還原預設群島配置");
+      },
+
+      rebuildAllFromState() {
+        this.placedMeshes.forEach(mesh => {
+          if (mesh.parent) mesh.parent.remove(mesh);
+        });
+        this.placedMeshes.clear();
+
+        this.bridgeMeshes.forEach(mesh => {
+          Engine.scene.remove(mesh);
+        });
+        this.bridgeMeshes.clear();
+
+        AppState.customObjects.forEach(obj => this.spawnPlacedMesh(obj));
+        AppState.bridges.forEach(br => this.spawnBridgeMesh(br));
+        UI.updateHistoryButtons();
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 自動飛行導覽系統 (Tour)
+     * ============================================================================
+     */
+    const Tour = {
+      active: false,
+      paused: false,
+      currentIndex: -1,
+      timer: 0,
+      stepDuration: 5.5,
+
+      start() {
+        if (AppState.builderActive) Builder.toggleMode();
+        this.active = true;
+        this.paused = false;
+        this.currentIndex = -1;
+        this.timer = 3.2;
+
+        document.getElementById("tour-bar").classList.remove("hidden");
+        document.getElementById("tour-status-label").textContent = "自動導覽中：群島全景";
+        document.getElementById("btn-tour-pause").innerHTML = '<i class="fa-solid fa-pause"></i> 暫停';
+
+        Engine.focusOnPosition(new THREE.Vector3(0, 2, -2), new THREE.Vector3(0, 48, 72), 1.1);
+        UI.showToast("🚁 啟動群島自動飛行導覽！");
+      },
+
+      togglePause() {
+        if (!this.active) return;
+        this.paused = !this.paused;
+        document.getElementById("btn-tour-pause").innerHTML = this.paused
+          ? '<i class="fa-solid fa-play"></i> 繼續'
+          : '<i class="fa-solid fa-pause"></i> 暫停';
+      },
+
+      next() {
+        if (!this.active) this.active = true;
+        this.currentIndex = (this.currentIndex + 1) % PVZ_THEME_DATA.islands.length;
+        this.goToCurrent();
+      },
+
+      prev() {
+        if (!this.active) this.active = true;
+        this.currentIndex = (this.currentIndex - 1 + PVZ_THEME_DATA.islands.length) % PVZ_THEME_DATA.islands.length;
+        this.goToCurrent();
+      },
+
+      goToCurrent() {
+        const isl = PVZ_THEME_DATA.islands[this.currentIndex];
+        if (!isl) return;
+        this.timer = this.stepDuration;
+        document.getElementById("tour-status-label").textContent = `自動導覽 (${this.currentIndex + 1}/${PVZ_THEME_DATA.islands.length})：${isl.name}`;
+        Engine.focusOnIsland(isl.id);
+      },
+
+      stop(silent = false) {
+        if (!this.active) return;
+        this.active = false;
+        this.paused = false;
+        document.getElementById("tour-bar").classList.add("hidden");
+        if (!silent) UI.showToast("已結束自動導覽");
+      },
+
+      update(dt) {
+        if (!this.active || this.paused) return;
+        this.timer -= dt;
+        if (this.timer <= 0) {
+          this.next();
+        }
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 使用者介面管理與真實資料/問答呈現 (UI)
+     * ============================================================================
+     */
+    const UI = {
+      toastTimeout: null,
+
+      init() {
+        if (AppState.leftCollapsed) {
+          document.getElementById("left-sidebar").classList.add("collapsed");
+        }
+        this.renderPassport();
+        this.renderIslandList();
+        this.updateHistoryButtons();
+      },
+
+      showToast(msg) {
+        const box = document.getElementById("toast-box");
+        const text = document.getElementById("toast-text");
+        text.textContent = msg;
+        box.classList.remove("opacity-0", "-translate-y-3");
+        box.classList.add("opacity-100", "translate-y-0");
+
+        clearTimeout(this.toastTimeout);
+        this.toastTimeout = setTimeout(() => {
+          box.classList.remove("opacity-100", "translate-y-0");
+          box.classList.add("opacity-0", "-translate-y-3");
+        }, 3000);
+      },
+
+      toggleLeftSidebar() {
+        AppState.leftCollapsed = !AppState.leftCollapsed;
+        const el = document.getElementById("left-sidebar");
+        if (AppState.leftCollapsed) {
+          el.classList.add("collapsed");
+        } else {
+          el.classList.remove("collapsed");
+        }
+      },
+
+      closeRightDrawer() {
+        document.getElementById("right-drawer").classList.add("collapsed");
+        AppState.activeIslandId = null;
+        AppState.activeNpcId = null;
+      },
+
+      renderPassport() {
+        const total = PVZ_THEME_DATA.islands.length;
+        const done = AppState.completedIslands.size;
+        const percent = Math.round((done / total) * 100);
+
+        document.getElementById("passport-percent").textContent = `${percent}%`;
+        document.getElementById("passport-bar").style.width = `${percent}%`;
+        document.getElementById("passport-completed").textContent = `${done} / ${total}`;
+        document.getElementById("passport-remaining").textContent = `${total - done} 座`;
+
+        const badgeGrid = document.getElementById("badge-grid");
+        badgeGrid.innerHTML = PVZ_THEME_DATA.islands.map(isl => {
+          const unlocked = AppState.completedIslands.has(isl.id);
+          return `
+            <button onclick="Engine.focusOnIsland('${isl.id}')" title="${isl.badgeName} (${unlocked ? '已獲得' : '未解鎖'})"
+              class="flex flex-col items-center justify-center p-1.5 rounded-xl border ${unlocked ? 'bg-amber-100 border-amber-400 shadow-sm' : 'bg-slate-100 border-slate-200 opacity-50 grayscale'} transition hover:scale-105">
+              <span class="text-lg ${unlocked ? 'animate-float' : ''}">${isl.icon}</span>
+              <span class="text-[9px] font-bold text-slate-700 truncate w-full mt-0.5">${unlocked ? '已獲得' : '待探索'}</span>
+            </button>
+          `;
+        }).join("");
+      },
+
+      renderIslandList() {
+        const list = document.getElementById("island-list");
+        list.innerHTML = PVZ_THEME_DATA.islands.map((isl, idx) => {
+          const done = AppState.completedIslands.has(isl.id);
+          return `
+            <button onclick="Engine.focusOnIsland('${isl.id}')"
+              class="w-full text-left bg-white hover:bg-lime-50 border-2 ${done ? 'border-emerald-400' : 'border-slate-200'} rounded-2xl p-2.5 flex items-center justify-between gap-2 transition shadow-sm">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="text-xl shrink-0">${isl.icon}</span>
+                <div class="truncate">
+                  <div class="text-xs font-black text-emerald-950 truncate">${idx + 1}. ${isl.name}</div>
+                  <div class="text-[11px] text-slate-500 truncate">${isl.subtitle}</div>
+                </div>
+              </div>
+              <span class="shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full ${done ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                ${done ? '✓ 已完成' : '探索'}
+              </span>
+            </button>
+          `;
+        }).join("");
+      },
+
+      openIslandDetail(islandId) {
+        const isl = PVZ_THEME_DATA.islands.find(i => i.id === islandId);
+        if (!isl) return;
+        AppState.activeIslandId = islandId;
+
+        const drawer = document.getElementById("right-drawer");
+        const header = document.getElementById("right-header");
+        const body = document.getElementById("right-body");
+
+        header.style.background = `linear-gradient(135deg, ${isl.themeColor}, #2e7d32)`;
+        document.getElementById("right-header-icon").textContent = isl.icon;
+        document.getElementById("right-header-title").textContent = isl.name;
+
+        const isCompleted = AppState.completedIslands.has(isl.id);
+
+        body.innerHTML = `
+          <div class="flex items-center justify-between gap-2 bg-lime-50 border border-lime-300 rounded-2xl px-3 py-2">
+            <span class="text-xs font-bold text-emerald-900">${isl.subtitle}</span>
+            <span class="text-[11px] font-black px-2.5 py-0.5 rounded-full ${isCompleted ? 'bg-amber-400 text-amber-950' : 'bg-slate-200 text-slate-700'}">
+              ${isCompleted ? `🏅 ${isl.badgeName}` : '🔒 徽章待解鎖'}
+            </span>
+          </div>
+
+          <div class="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="relative bg-slate-100 aspect-video flex items-center justify-center overflow-hidden">
+              <img src="${isl.realPhoto.url}" alt="${isl.realPhoto.caption}"
+                onerror="this.onerror=null; this.src='https://placehold.co/640x360/e8f5e9/2e7d32?text=Wikimedia+Commons+%E5%8E%9F%E5%A7%8B%E6%AA%94%E6%A1%88%E9%80%A3%E7%B5%90';"
+                class="w-full h-full object-cover" />
+              <span class="absolute top-2 right-2 bg-slate-900/75 text-white text-[10px] px-2 py-0.5 rounded-full">
+                真實參考攝影
+              </span>
+            </div>
+            <div class="p-2.5 text-[11px] text-slate-600 space-y-1 bg-slate-50">
+              <div class="font-bold text-slate-800">${isl.realPhoto.caption}</div>
+              <div class="flex items-center justify-between gap-2 text-[10px]">
+                <span>授權來源：${isl.realPhoto.credit}</span>
+                <a href="${isl.realPhoto.sourcePage}" target="_blank" rel="noopener noreferrer" class="text-sky-700 font-bold underline shrink-0">
+                  檢視原圖頁 <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <h3 class="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+              <i class="fa-solid fa-book text-emerald-600"></i> 認識主題與官方背景
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-700 leading-relaxed bg-white p-3 rounded-2xl border border-slate-200">
+              ${isl.summary}
+            </p>
+          </div>
+
+          <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 text-xs text-amber-950">
+            <div class="font-black text-amber-800 mb-1 flex items-center gap-1.5">
+              <i class="fa-solid fa-lightbulb text-amber-500"></i> 有趣的小知識
+            </div>
+            <p class="leading-relaxed">${isl.funFact}</p>
+          </div>
+
+          <div class="bg-gradient-to-br from-emerald-50 to-sky-50 border-2 border-emerald-400 rounded-2xl p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                <i class="fa-solid fa-star text-amber-500"></i> 互動探索挑戰
+              </span>
+              <span class="text-[11px] font-bold text-emerald-700">答對獲得【${isl.badgeName}】</span>
+            </div>
+            <p class="text-xs font-bold text-slate-800 leading-snug">${isl.quiz.question}</p>
+            <div class="space-y-1.5" id="quiz-options">
+              ${isl.quiz.options.map((opt, idx) => `
+                <button onclick="UI.submitQuizAnswer('${isl.id}', ${idx})"
+                  class="pvz-btn w-full text-left bg-white hover:bg-amber-50 border-2 border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 flex items-center gap-2">
+                  <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[11px] font-black shrink-0">
+                    ${["A", "B", "C"][idx]}
+                  </span>
+                  <span>${opt}</span>
+                </button>
+              `).join("")}
+            </div>
+            <div id="quiz-feedback" class="hidden text-xs p-2.5 rounded-xl font-bold leading-relaxed"></div>
+          </div>
+
+          <div class="bg-slate-100 border border-slate-300 rounded-2xl p-3 space-y-1.5">
+            <div class="text-[11px] font-black text-slate-700">
+              <i class="fa-solid fa-link text-sky-600"></i> 可核實資料來源連結
+            </div>
+            ${isl.sources.map(src => `
+              <a href="${src.url}" target="_blank" rel="noopener noreferrer"
+                class="block text-xs text-sky-700 hover:text-sky-900 font-bold underline truncate">
+                • ${src.title} <i class="fa-solid fa-external-link-alt text-[10px]"></i>
+              </a>
+            `).join("")}
+          </div>
+        `;
+
+        drawer.classList.remove("collapsed");
+      },
+
+      submitQuizAnswer(islandId, selectedIndex) {
+        const isl = PVZ_THEME_DATA.islands.find(i => i.id === islandId);
+        if (!isl) return;
+
+        const feedback = document.getElementById("quiz-feedback");
+        feedback.classList.remove("hidden", "bg-emerald-100", "text-emerald-900", "bg-rose-100", "text-rose-900");
+
+        if (selectedIndex === isl.quiz.answerIndex) {
+          feedback.classList.add("bg-emerald-100", "text-emerald-900", "border", "border-emerald-400");
+          feedback.innerHTML = `🎉 ${isl.quiz.explanation}<br/><span class="text-amber-800">已解鎖並收入護照：【${isl.badgeName}】！</span>`;
+          if (!AppState.completedIslands.has(islandId)) {
+            AppState.completedIslands.add(islandId);
+            AppState.saveProgress();
+            this.renderPassport();
+            this.renderIslandList();
+            this.showToast(`🏅 恭喜獲得【${isl.badgeName}】！`);
+          }
+        } else {
+          feedback.classList.add("bg-rose-100", "text-rose-900", "border", "border-rose-300");
+          feedback.textContent = "差一點點！提示：可以再讀一次上方的「認識主題」介紹喔，再選一次試試看！";
+        }
+      },
+
+      openNPCDialogue(npcState) {
+        const isl = PVZ_THEME_DATA.islands.find(i => i.id === npcState.currentIslandId);
+        const drawer = document.getElementById("right-drawer");
+        const header = document.getElementById("right-header");
+        const body = document.getElementById("right-body");
+
+        header.style.background = "linear-gradient(135deg, #29b6f6, #0277bd)";
+        document.getElementById("right-header-icon").textContent = "💬";
+        document.getElementById("right-header-title").textContent = npcState.data.name;
+
+        body.innerHTML = `
+          <div class="bg-sky-50 border-2 border-sky-300 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-2xl bg-amber-300 border-2 border-amber-500 flex items-center justify-center text-2xl shadow-sm">
+                ${isl ? isl.icon : "🌱"}
+              </div>
+              <div>
+                <div class="text-base font-black text-sky-950">${npcState.data.name}</div>
+                <div class="text-xs font-bold text-sky-700">職業：${npcState.data.role} • 所在：${isl ? isl.name : "群島步道"}</div>
+              </div>
+            </div>
+
+            <div class="bg-white border-2 border-sky-200 rounded-2xl p-3.5 text-sm text-slate-800 leading-relaxed shadow-sm relative">
+              「${npcState.data.dialogue}」
+            </div>
+
+            ${isl ? `
+              <button onclick="Engine.focusOnIsland('${isl.id}')"
+                class="pvz-btn w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-2xl border border-emerald-800 text-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-book-open"></i> 查看【${isl.name}】完整資料與問答
+              </button>
+            ` : ""}
+          </div>
+        `;
+
+        drawer.classList.remove("collapsed");
+      },
+
+      updateHistoryButtons() {
+        const undoBtn = document.getElementById("btn-undo");
+        const redoBtn = document.getElementById("btn-redo");
+        if (undoBtn) undoBtn.disabled = AppState.undoStack.length === 0;
+        if (redoBtn) redoBtn.disabled = AppState.redoStack.length === 0;
+      },
+
+      openArchModal() {
+        const modal = document.getElementById("arch-modal");
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+      },
+
+      closeArchModal() {
+        const modal = document.getElementById("arch-modal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 啟動生命週期 (Window Onload)
+     * ============================================================================
+     */
+    window.onload = function () {
+      AppState.load();
+      if (AppState.bridges.length === 0 && AppState.customObjects.length === 0) {
+        AppState.bridges = [
+          { id: "br_default_1", fromId: "popcap-origin", toId: "sunflower-greenhouse" },
+          { id: "br_default_2", fromId: "sunflower-greenhouse", toId: "peashooter-fort" }
+        ];
+      }
+      Engine.init();
+      UI.init();
+      Engine.animate();
+    };
+  </script>
+</body>
+</html>
